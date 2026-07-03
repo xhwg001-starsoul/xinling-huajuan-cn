@@ -7,7 +7,7 @@
 复制 `.env.example` 为 `.env.local`，并填写本地测试配置：
 
 ```text
-ACCESS_CODE=htp2026test
+ACCESS_CODE=你的内部访问码
 OPENAI_API_KEY=你的 OpenAI API Key
 ```
 
