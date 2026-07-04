@@ -65,8 +65,44 @@ const PROVIDERS = {
   },
 };
 
+const CONTENT_TYPES = {
+  dialogue: "心灵对话",
+  professional: "教师专业观察报告",
+  interview: "后续访谈问题",
+  family: "家校沟通建议",
+  counselingRecord: "辅导记录初稿",
+  riskReferral: "风险提示与转介建议",
+};
+
+function normalizeContentType(profile = {}) {
+  const raw = profile.contentType || profile.desiredHelp || profile.reportMode || CONTENT_TYPES.dialogue;
+  const aliases = {
+    dialogue: CONTENT_TYPES.dialogue,
+    standard: CONTENT_TYPES.dialogue,
+    心灵对话: CONTENT_TYPES.dialogue,
+    professional: CONTENT_TYPES.professional,
+    deep: CONTENT_TYPES.professional,
+    专业观察报告: CONTENT_TYPES.professional,
+    教师专业报告: CONTENT_TYPES.professional,
+    教师专业观察报告: CONTENT_TYPES.professional,
+    生成初步观察报告: CONTENT_TYPES.professional,
+    生成访谈问题: CONTENT_TYPES.interview,
+    后续访谈问题: CONTENT_TYPES.interview,
+    生成家校沟通建议: CONTENT_TYPES.family,
+    家校沟通建议: CONTENT_TYPES.family,
+    生成辅导记录初稿: CONTENT_TYPES.counselingRecord,
+    辅导记录初稿: CONTENT_TYPES.counselingRecord,
+    风险提示与转介建议: CONTENT_TYPES.riskReferral,
+  };
+  return aliases[raw] || CONTENT_TYPES.dialogue;
+}
+
 const documentPlans = {
-  "生成初步观察报告": {
+  心灵对话: {
+    title: "心灵对话",
+    sections: [],
+  },
+  教师专业观察报告: {
     title: "房树人绘画心理观察辅助报告",
     sections: [
       "基本信息摘要",
@@ -85,26 +121,26 @@ const documentPlans = {
       "报告限制与免责声明",
     ],
   },
-  "生成访谈问题": {
-    title: "房树人绘画访谈问题建议",
+  后续访谈问题: {
+    title: "后续访谈问题建议",
     sections: ["访谈准备摘要", "从画面进入谈话的暖场问题", "围绕房子的开放式问题", "围绕树木的开放式问题", "围绕人物的开放式问题", "结合近期表现的澄清问题", "安全感、支持资源与求助意愿问题", "风险评估相关的温和询问", "教师提问注意事项", "后续访谈记录建议", "使用限制与免责声明"],
   },
-  "生成家校沟通建议": {
-    title: "家校沟通建议稿",
+  家校沟通建议: {
+    title: "家校沟通建议",
     sections: ["沟通前信息摘要", "建议沟通目标", "与家长沟通的表达原则", "可以向家长了解的问题", "可以反馈给家长的观察内容", "家庭支持建议", "学校后续配合建议", "风险情形下的沟通提醒", "可直接参考的沟通话术", "使用限制与免责声明"],
   },
-  "生成辅导记录初稿": {
-    title: "学生心理辅导记录初稿",
+  辅导记录初稿: {
+    title: "心理辅导记录初稿",
     sections: ["基本信息", "辅导背景与资料来源", "学生近期主要表现", "学生本人描述摘要", "房树人图画客观观察摘要", "初步观察线索", "保护性因素与可用资源", "风险信息与处置建议", "本次辅导目标建议", "个别谈话过程记录初稿", "教师回应与支持策略", "家校沟通或班级观察建议", "后续跟进计划", "记录限制与免责声明"],
   },
-  "其他": {
-    title: "房树人绘画观察辅助文档",
-    sections: ["信息摘要", "画面客观观察", "可能线索", "教师可用建议", "后续跟进", "使用限制与免责声明"],
+  风险提示与转介建议: {
+    title: "风险提示与转介建议",
+    sections: ["风险信息摘要", "画面中需要谨慎关注的风险线索", "背景资料中的风险线索", "风险等级的初步分层理解", "需要进一步人工评估的问题", "危机干预启动建议", "转介与协作建议", "与监护人沟通提醒", "后续观察与记录建议", "使用限制与免责声明"],
   },
 };
 
 function selectedPlan(profile) {
-  return documentPlans[profile.desiredHelp] || documentPlans["生成初步观察报告"];
+  return documentPlans[normalizeContentType(profile)] || documentPlans[CONTENT_TYPES.dialogue];
 }
 
 function selectedProvider(step) {
@@ -205,16 +241,95 @@ function buildObjectiveObservationPrompt() {
 5. 输出 Markdown，标题为“# 客观画面观察记录”。`;
 }
 
+function isDialogueMode(profile) {
+  return normalizeContentType(profile) === CONTENT_TYPES.dialogue;
+}
+
 function modeText(profile) {
-  if (profile.reportMode === "standard") {
-    return "标准报告：结构清晰，适合快速了解，约 1500-2000 字。可以保持完整结构，但不要过度展开。";
+  if (isDialogueMode(profile)) {
+    return "心灵对话：温暖、敏锐、文学性较强，适合深入理解作画者的内心体验。请写成 2000-3500 字左右的心理信件，不要写成表格式测评报告。";
   }
-  return "深度报告：观察更细致，推测更充分，适合个案研讨，约 3000-4500 字。请生成较完整的深度报告，不要过度简写。";
+  return "专业观察报告：结构规范、谨慎细致，适合学校心理教师个案研讨、访谈准备和辅导记录。请保持原有专业结构和风险提示，生成较完整的专业观察报告，不要过度简写。";
+}
+
+function buildDialoguePrompt(profile, observationRecord) {
+  return `你是一位温暖、敏锐、富有经验的心理咨询师。你不是在写趣味测试，也不是在写医学诊断，而是在写一封温暖、敏锐、深入的心理对话文本。
+
+请认真凝视这幅房树人图画，结合教师填写的背景资料，尝试进入作画者的内心世界。你的语言要像一位知心姐姐、亲切友善而又有洞察力的咨询师，写给作画者或教师的一封心理信件。
+
+重要定位：
+- 这不是心理诊断，不是医学诊断，也不是治疗建议。
+- 这是基于图画和背景资料生成的心理观察与陪伴性推测。
+- 可以比专业观察报告更大胆、更诚恳地提出假设，但必须保留边界。
+- 文字要温柔、细腻、有文学性、有共情力，但不能脱离画面证据。
+
+报告模式：${modeText(profile)}
+
+第一步视觉模型生成的客观画面观察记录：
+${observationRecord}
+
+教师填写的背景资料：
+- 学生编号或化名：${profile.studentAlias || "未填写"}
+- 年龄段：${profile.ageRange || "未填写"}
+- 性别：${profile.gender || "未填写"}
+- 年级：${profile.grade || "未填写"}
+- 绘画情境：${profile.drawingContext || "未填写"}
+- 学生近期主要表现：${profile.recentBehavior || "未填写"}
+- 教师关注的问题：${profile.teacherConcern || "未填写"}
+- 学生本人描述或讲述内容：${profile.studentNarrative || "未填写"}
+- 是否存在明显风险信息：${profile.riskInfo || "未填写"}
+- 教师希望生成的内容：${normalizeContentType(profile)}
+
+心灵对话写作原则：
+1. 先看见画面，再走入内心。每一个较重要的推测，都要来自画面中的某个细节或教师提供的背景资料，不要凭空发挥。
+2. 允许更大胆的心理假设。可以写“我会倾向于把这里理解为一种压抑已久的紧张”“这个小小的人物，也许不是软弱，而是在努力保护自己不被外界吞没”“如果画面中的封闭感也出现在现实生活里，那么这个孩子可能正在用退缩的方式求得安全”。
+3. 必须保留边界。请自然使用“也许”“可能”“似乎”“我会倾向于理解为”“这需要进一步访谈确认”“这不是结论，而是一个值得温柔核对的线索”等表达。
+4. 要敢于指出可能的问题。如果画面或背景资料中出现明显线索，可以较明确地指出可能存在安全感不足、情绪压抑、自我表达受限、关系中的孤独感、对家庭或学校环境的紧张、行动力不足、自我形象低弱、过度自我保护、渴望被看见却又害怕暴露、内心冲突、逃避、退缩或无力感。
+5. 不能写成诊断。禁止使用“你有抑郁症”“你人格有问题”“你家庭一定不幸福”“你心理异常”“你有严重创伤”等绝对化、标签化、恐吓式表达。
+6. 不要空泛鼓励。不要只写“你很好”“你要相信自己”这类空话，除非能从具体画面或资料中看到依据。
+7. 要能写出画面背后可能隐藏的情绪、关系、渴望、防御、孤独、压力、矛盾或求助信号。
+8. 建议要具体、温暖、可执行。可以建议从画面故事入手谈话、补画“我希望的家/我希望的自己”、记录一个稍微放松的时刻、找安全的人说出一件最近难受的小事等。
+9. 若背景资料显示自伤、自杀、长期失眠、明显拒学、严重冲突或暴力风险，要冷静建议及时寻求学校心理教师、监护人和专业心理咨询/医疗资源，不要制造恐慌。
+
+请使用 Markdown 输出，不要输出 JSON。请写成一封有小标题的心理信件，字数控制在 2000-3500 字左右。结构如下：
+
+# 心灵对话
+
+## 1. 开头：我看见了这幅画，也想轻轻走近你
+用 1-2 段温暖开头，说明这不是诊断，而是一种陪伴式理解。
+
+## 2. 画面给我的第一感受
+描写整体画面氛围，语言可以有文学性，但必须基于视觉证据。
+
+## 3. 房子：你心中关于安全、归属与边界的故事
+结合房子的大小、位置、门窗、路径、开放性、封闭性等，进行较深入的理解。重要推测必须有画面依据，并保留“也可能只是绘画习惯或构图选择”的边界。
+
+## 4. 树木：你正在怎样生长，又怎样承受风雨
+结合树干、树冠、根、枝叶、倾斜、生命力等，理解成长感、压力承受、能量状态。
+
+## 5. 人物：你如何把自己放在这个世界里
+结合人物大小、位置、动作、表情、手脚、完整性、朝向等，理解自我感、行动感、表达方式和关系期待。
+
+## 6. 也许真正值得被看见的是……
+这是核心部分。请更深入地指出画面和资料中可能透露出的内在问题、情绪困境或未被表达的需要。表达要真诚、敏锐、温柔，可以一针见血，但必须保留推测边界。
+
+## 7. 给你的温柔而明确的建议
+给出 5-8 条具体建议。建议要有针对性，不要泛泛而谈。
+
+## 8. 如果你是老师，可以这样继续靠近
+给教师 5-8 条后续访谈或陪伴建议。要具体说明可以从哪个问题开始问、哪些话不要急着说、如何降低学生防御。
+
+## 9. 结尾：愿你被看见，也慢慢看见自己
+用一段有力量但不过度煽情的结尾。
+
+## 10. 声明
+必须写明：以上内容是基于图画和背景资料生成的心理观察与陪伴性推测，不构成心理诊断。若存在自伤、自杀、严重冲突、长期失眠、明显拒学或其他危机风险，应及时联系学校心理教师、监护人和专业心理咨询/医疗资源。`;
 }
 
 function buildProfessionalReportPrompt(profile, observationRecord) {
   const plan = selectedPlan(profile);
-  const isObservationReport = (profile.desiredHelp || "生成初步观察报告") === "生成初步观察报告";
+  const contentType = normalizeContentType(profile);
+  const isObservationReport = contentType === CONTENT_TYPES.professional;
   const deepLengthRules = isObservationReport
     ? `
 重点篇幅要求：
@@ -237,7 +352,7 @@ function buildProfessionalReportPrompt(profile, observationRecord) {
 - 目标是帮助学校心理教师形成初步个案理解、访谈假设、辅导记录和后续跟进思路。
 - 请像一位有经验的学校心理教师写给同事的观察记录，有温度、有分寸、有理解力，避免机械填表感。
 
-本次生成目标：${profile.desiredHelp || "生成初步观察报告"}
+本次生成目标：${contentType}
 文档标题：${plan.title}
 报告模式：${modeText(profile)}
 
@@ -281,6 +396,7 @@ function documentTitleFromMarkdown(markdown, fallback) {
 async function generateTeacherReport({ image, profile }) {
   const visionProvider = selectedProvider("vision");
   const textProvider = selectedProvider("text");
+  const contentType = normalizeContentType(profile);
   const plan = selectedPlan(profile);
 
   const observationRecord = await callModel({
@@ -291,15 +407,19 @@ async function generateTeacherReport({ image, profile }) {
     maxOutputTokens: 2200,
   });
 
+  const textPrompt = isDialogueMode(profile)
+    ? buildDialoguePrompt(profile, observationRecord)
+    : buildProfessionalReportPrompt(profile, observationRecord);
+
   const markdown = await callModel({
     provider: textProvider,
     step: "text",
-    prompt: buildProfessionalReportPrompt(profile, observationRecord),
-    maxOutputTokens: profile.reportMode === "standard" ? 3500 : 8000,
+    prompt: textPrompt,
+    maxOutputTokens: isDialogueMode(profile) ? 6500 : 8000,
   });
 
   return {
-    documentTitle: documentTitleFromMarkdown(markdown, plan.title),
+    documentTitle: documentTitleFromMarkdown(markdown, contentType === CONTENT_TYPES.dialogue ? "心灵对话" : plan.title),
     markdown,
     observationRecord,
     providers: {

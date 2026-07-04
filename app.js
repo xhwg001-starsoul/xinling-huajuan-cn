@@ -19,7 +19,7 @@ const reportTitle = document.querySelector("#reportTitle");
 const copyReportButton = document.querySelector("#copyReportButton");
 const printReportButton = document.querySelector("#printReportButton");
 const resetButton = document.querySelector("#resetButton");
-const desiredHelp = document.querySelector("#desiredHelp");
+const contentTypeSelect = document.querySelector("#contentType");
 
 const accessStateKey = "xinling_access_ok";
 const accessCodeKey = "xinling_access_code";
@@ -29,16 +29,17 @@ let selectedDataUrl = "";
 let lastReportText = "";
 let isSubmitting = false;
 
-const helpConfig = {
-  生成初步观察报告: { button: "生成观察报告", title: "房树人绘画心理观察辅助报告", waiting: "正在生成观察报告，请稍等。", done: "观察报告已生成。" },
-  生成访谈问题: { button: "生成访谈问题", title: "房树人绘画访谈问题建议", waiting: "正在生成访谈问题建议，请稍等。", done: "访谈问题建议已生成。" },
-  生成家校沟通建议: { button: "生成家校沟通建议", title: "家校沟通建议稿", waiting: "正在生成家校沟通建议，请稍等。", done: "家校沟通建议已生成。" },
-  生成辅导记录初稿: { button: "生成辅导记录初稿", title: "学生心理辅导记录初稿", waiting: "正在生成辅导记录初稿，请稍等。", done: "辅导记录初稿已生成。" },
-  其他: { button: "生成辅助文档", title: "房树人绘画观察辅助文档", waiting: "正在生成辅助文档，请稍等。", done: "辅助文档已生成。" },
+const contentConfig = {
+  心灵对话: { button: "生成心灵对话", title: "心灵对话", waiting: "正在生成心灵对话，请稍等。", done: "心灵对话已生成。" },
+  教师专业观察报告: { button: "生成专业观察报告", title: "房树人绘画心理观察辅助报告", waiting: "正在生成专业观察报告，请稍等。", done: "专业观察报告已生成。" },
+  后续访谈问题: { button: "生成访谈问题", title: "后续访谈问题建议", waiting: "正在生成访谈问题建议，请稍等。", done: "访谈问题建议已生成。" },
+  家校沟通建议: { button: "生成家校沟通建议", title: "家校沟通建议", waiting: "正在生成家校沟通建议，请稍等。", done: "家校沟通建议已生成。" },
+  辅导记录初稿: { button: "生成辅导记录初稿", title: "心理辅导记录初稿", waiting: "正在生成辅导记录初稿，请稍等。", done: "辅导记录初稿已生成。" },
+  风险提示与转介建议: { button: "生成风险提示与转介建议", title: "风险提示与转介建议", waiting: "正在生成风险提示与转介建议，请稍等。", done: "风险提示与转介建议已生成。" },
 };
 
 function getCurrentConfig() {
-  return helpConfig[desiredHelp.value] || helpConfig["生成初步观察报告"];
+  return contentConfig[contentTypeSelect.value] || contentConfig["心灵对话"];
 }
 
 function updateGenerateLabels() {
@@ -192,12 +193,11 @@ function getTeacherProfile() {
     gender: formData.get("gender"),
     grade: formData.get("grade"),
     drawingContext: formData.get("drawingContext"),
-    reportMode: formData.get("reportMode"),
     recentBehavior: formData.get("recentBehavior"),
     teacherConcern: formData.get("teacherConcern"),
     studentNarrative: formData.get("studentNarrative"),
     riskInfo: formData.get("riskInfo"),
-    desiredHelp: formData.get("desiredHelp"),
+    contentType: formData.get("contentType"),
   };
 }
 

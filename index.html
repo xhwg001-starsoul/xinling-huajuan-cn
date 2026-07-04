@@ -138,13 +138,6 @@
                 </select>
               </div>
               <div class="field field-wide">
-                <label for="reportMode">报告模式</label>
-                <select id="reportMode" name="reportMode" required>
-                  <option value="deep" selected>深度报告：观察更细致，适合个案研讨，约 3000-4500 字</option>
-                  <option value="standard">标准报告：结构清晰，适合快速了解，约 1500-2000 字</option>
-                </select>
-              </div>
-              <div class="field field-wide">
                 <label for="recentBehavior">学生近期主要表现</label>
                 <textarea id="recentBehavior" name="recentBehavior" rows="3" required></textarea>
               </div>
@@ -157,14 +150,14 @@
                 <textarea id="studentNarrative" name="studentNarrative" rows="3" placeholder="可填写学生对图画、近期状态或事件的原话/概述" required></textarea>
               </div>
               <div class="field field-wide">
-                <label for="desiredHelp">教师希望获得的帮助</label>
-                <select id="desiredHelp" name="desiredHelp" required>
-                  <option value="">请选择</option>
-                  <option>生成初步观察报告</option>
-                  <option>生成访谈问题</option>
-                  <option>生成家校沟通建议</option>
-                  <option>生成辅导记录初稿</option>
-                  <option>其他</option>
+                <label for="contentType">教师希望生成的内容</label>
+                <select id="contentType" name="contentType" required>
+                  <option value="心灵对话" selected>心灵对话：温暖、敏锐、文学性较强，适合深入理解作画者的内心体验，像一封心理对话信。</option>
+                  <option value="教师专业观察报告">教师专业观察报告：结构规范、谨慎细致，适合学校心理教师个案研讨、访谈准备和辅导记录。</option>
+                  <option value="后续访谈问题">后续访谈问题：根据图画和背景资料，生成适合教师继续了解学生的访谈问题清单。</option>
+                  <option value="家校沟通建议">家校沟通建议：帮助教师与家长温和、清晰、谨慎地沟通学生状态与支持方式。</option>
+                  <option value="辅导记录初稿">辅导记录初稿：生成适合学校心理辅导档案使用的辅导记录初稿。</option>
+                  <option value="风险提示与转介建议">风险提示与转介建议：重点分析可能存在的风险线索，并给出进一步评估、危机干预或转介建议。</option>
                 </select>
               </div>
 
@@ -175,7 +168,7 @@
               </div>
             </form>
 
-            <button class="primary-button" id="analyzeButton" type="button" disabled>生成观察报告</button>
+            <button class="primary-button" id="analyzeButton" type="button" disabled>生成心灵对话</button>
             <p class="form-hint" id="formHint">请先上传图画，并补充必填记录信息。</p>
           </section>
         </section>
