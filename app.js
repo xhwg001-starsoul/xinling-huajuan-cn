@@ -3,6 +3,14 @@ const appShell = document.querySelector("#appShell");
 const loginForm = document.querySelector("#loginForm");
 const loginMessage = document.querySelector("#loginMessage");
 const logoutButton = document.querySelector("#logoutButton");
+const analysisViewButton = document.querySelector("#analysisViewButton");
+const dashboardViewButton = document.querySelector("#dashboardViewButton");
+const backToAnalysisButton = document.querySelector("#backToAnalysisButton");
+const analysisView = document.querySelector("#analysisView");
+const dashboardView = document.querySelector("#dashboardView");
+const currentTeacherLabel = document.querySelector("#currentTeacherLabel");
+const teacherAliasInput = document.querySelector("#teacherAliasInput");
+const saveTeacherButton = document.querySelector("#saveTeacherButton");
 const artworkInput = document.querySelector("#artworkInput");
 const dropZone = document.querySelector("#dropZone");
 const previewWrap = document.querySelector("#previewWrap");
@@ -20,9 +28,21 @@ const copyReportButton = document.querySelector("#copyReportButton");
 const printReportButton = document.querySelector("#printReportButton");
 const resetButton = document.querySelector("#resetButton");
 const contentTypeSelect = document.querySelector("#contentType");
+const todayCount = document.querySelector("#todayCount");
+const totalCount = document.querySelector("#totalCount");
+const riskCount = document.querySelector("#riskCount");
+const typeStatsList = document.querySelector("#typeStatsList");
+const recentRecordsBody = document.querySelector("#recentRecordsBody");
+const teacherFilterSelect = document.querySelector("#teacherFilterSelect");
+const refreshStatsButton = document.querySelector("#refreshStatsButton");
+const exportStatsButton = document.querySelector("#exportStatsButton");
+const clearStatsButton = document.querySelector("#clearStatsButton");
+const clearCurrentTeacherStatsButton = document.querySelector("#clearCurrentTeacherStatsButton");
 
 const accessStateKey = "xinling_access_ok";
 const accessCodeKey = "xinling_access_code";
+const usageRecordsKey = "soul_painting_usage_records";
+const currentTeacherKey = "soul_painting_current_teacher";
 const maxImageSize = 5 * 1024 * 1024;
 let selectedFile = null;
 let selectedDataUrl = "";
@@ -38,6 +58,31 @@ const contentConfig = {
   风险提示与转介建议: { button: "生成风险提示与转介建议", title: "风险提示与转介建议", waiting: "正在生成风险提示与转介建议，请稍等。", done: "风险提示与转介建议已生成。" },
 };
 
+const contentTypes = Object.keys(contentConfig);
+
+function normalizeTeacherAlias(value) {
+  const trimmed = String(value || "").trim();
+  return trimmed || "未设置";
+}
+
+function getCurrentTeacher() {
+  return normalizeTeacherAlias(localStorage.getItem(currentTeacherKey));
+}
+
+function saveCurrentTeacher(value) {
+  const alias = normalizeTeacherAlias(value);
+  if (alias === "未设置") localStorage.removeItem(currentTeacherKey);
+  else localStorage.setItem(currentTeacherKey, alias);
+  renderCurrentTeacher();
+  renderUsageStats();
+}
+
+function renderCurrentTeacher() {
+  const alias = getCurrentTeacher();
+  currentTeacherLabel.textContent = alias;
+  teacherAliasInput.value = alias === "未设置" ? "" : alias;
+}
+
 function getCurrentConfig() {
   return contentConfig[contentTypeSelect.value] || contentConfig["心灵对话"];
 }
@@ -52,6 +97,7 @@ function updateGenerateLabels() {
 function showApp() {
   loginScreen.classList.add("is-hidden");
   appShell.classList.remove("is-hidden");
+  showAnalysisView();
 }
 
 function showLogin() {
@@ -99,6 +145,25 @@ logoutButton.addEventListener("click", () => {
   loginForm.reset();
   resetWorkspace();
   showLogin();
+});
+
+function showAnalysisView() {
+  analysisView.classList.remove("is-hidden");
+  dashboardView.classList.add("is-hidden");
+}
+
+function showDashboardView() {
+  analysisView.classList.add("is-hidden");
+  dashboardView.classList.remove("is-hidden");
+  renderUsageStats();
+}
+
+analysisViewButton.addEventListener("click", showAnalysisView);
+backToAnalysisButton.addEventListener("click", showAnalysisView);
+dashboardViewButton.addEventListener("click", showDashboardView);
+saveTeacherButton.addEventListener("click", () => saveCurrentTeacher(teacherAliasInput.value));
+teacherAliasInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") saveCurrentTeacher(teacherAliasInput.value);
 });
 
 function setStatus(message, isError = false) {
@@ -201,6 +266,174 @@ function getTeacherProfile() {
   };
 }
 
+function createUsageId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeContentType(value) {
+  return contentTypes.includes(value) ? value : "心灵对话";
+}
+
+function getSelectedTeacherFilter() {
+  return teacherFilterSelect.value || "全部教师";
+}
+
+function isToday(isoTime) {
+  const date = new Date(isoTime);
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+}
+
+function getUsageRecords() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(usageRecordsKey) || "[]");
+    if (!Array.isArray(parsed)) return [];
+
+    // 只保留安全元数据字段，避免旧数据或异常数据把敏感内容带入工作台。
+    return parsed
+      .filter((record) => record && typeof record === "object")
+      .map((record) => ({
+        id: String(record.id || createUsageId()),
+        createdAt: String(record.createdAt || new Date().toISOString()),
+        contentType: normalizeContentType(record.contentType),
+        isRiskRelated: record.contentType === "风险提示与转介建议" || record.isRiskRelated === true,
+        teacherAlias: normalizeTeacherAlias(record.teacherAlias),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function saveUsageRecord(contentType) {
+  const safeType = normalizeContentType(contentType);
+  const records = getUsageRecords();
+  records.push({
+    id: createUsageId(),
+    createdAt: new Date().toISOString(),
+    contentType: safeType,
+    isRiskRelated: safeType === "风险提示与转介建议",
+    teacherAlias: getCurrentTeacher(),
+  });
+  try {
+    localStorage.setItem(usageRecordsKey, JSON.stringify(records));
+  } catch {
+    // 本机统计只是辅助信息，写入失败不能影响报告生成主流程。
+  }
+}
+
+function getTeacherOptions(records = getUsageRecords()) {
+  const names = new Set(["未设置"]);
+  for (const record of records) names.add(normalizeTeacherAlias(record.teacherAlias));
+  return ["全部教师", ...Array.from(names).sort((a, b) => a.localeCompare(b, "zh-CN"))];
+}
+
+function filterUsageRecordsByTeacher(records, teacherAlias) {
+  if (!teacherAlias || teacherAlias === "全部教师") return records;
+  return records.filter((record) => normalizeTeacherAlias(record.teacherAlias) === teacherAlias);
+}
+
+function getUsageStats(teacherAlias = "全部教师") {
+  const records = filterUsageRecordsByTeacher(getUsageRecords(), teacherAlias);
+  const byType = Object.fromEntries(contentTypes.map((type) => [type, 0]));
+  for (const record of records) {
+    byType[record.contentType] = (byType[record.contentType] || 0) + 1;
+  }
+
+  return {
+    todayTotal: records.filter((record) => isToday(record.createdAt)).length,
+    total: records.length,
+    riskTotal: records.filter((record) => record.isRiskRelated).length,
+    byType,
+    recentRecords: records.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 10),
+  };
+}
+
+function formatRecordTime(isoTime) {
+  const date = new Date(isoTime);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function renderUsageStats() {
+  const previousFilter = getSelectedTeacherFilter();
+  const teacherOptions = getTeacherOptions();
+  teacherFilterSelect.innerHTML = "";
+  for (const optionValue of teacherOptions) {
+    const option = document.createElement("option");
+    option.value = optionValue;
+    option.textContent = optionValue;
+    teacherFilterSelect.appendChild(option);
+  }
+  teacherFilterSelect.value = teacherOptions.includes(previousFilter) ? previousFilter : "全部教师";
+
+  const stats = getUsageStats(getSelectedTeacherFilter());
+  todayCount.textContent = stats.todayTotal;
+  totalCount.textContent = stats.total;
+  riskCount.textContent = stats.riskTotal;
+
+  typeStatsList.innerHTML = "";
+  for (const type of contentTypes) {
+    const row = document.createElement("div");
+    row.className = "type-row";
+    const label = document.createElement("span");
+    label.textContent = type;
+    const value = document.createElement("strong");
+    value.textContent = stats.byType[type] || 0;
+    row.append(label, value);
+    typeStatsList.appendChild(row);
+  }
+
+  recentRecordsBody.innerHTML = "";
+  if (!stats.recentRecords.length) {
+    const emptyRow = document.createElement("tr");
+    const emptyCell = document.createElement("td");
+    emptyCell.colSpan = 4;
+    emptyCell.textContent = "暂无统计记录";
+    emptyRow.appendChild(emptyCell);
+    recentRecordsBody.appendChild(emptyRow);
+    return;
+  }
+
+  for (const record of stats.recentRecords) {
+    const row = document.createElement("tr");
+    const timeCell = document.createElement("td");
+    const teacherCell = document.createElement("td");
+    const typeCell = document.createElement("td");
+    const riskCell = document.createElement("td");
+    timeCell.textContent = formatRecordTime(record.createdAt);
+    teacherCell.textContent = normalizeTeacherAlias(record.teacherAlias);
+    typeCell.textContent = record.contentType;
+    riskCell.textContent = record.isRiskRelated ? "是" : "否";
+    row.append(timeCell, teacherCell, typeCell, riskCell);
+    recentRecordsBody.appendChild(row);
+  }
+}
+
+function clearUsageRecords() {
+  localStorage.removeItem(usageRecordsKey);
+  renderUsageStats();
+}
+
+function exportUsageRecords() {
+  const teacherFilter = getSelectedTeacherFilter();
+  const records = filterUsageRecordsByTeacher(getUsageRecords(), teacherFilter);
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    teacherFilter,
+    note: "仅包含本浏览器中的安全使用统计元数据，不包含学生资料、图片或报告正文。",
+    records,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `soul-painting-usage-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function markdownToHtml(markdown) {
   const lines = String(markdown || "").split(/\r?\n/);
   let html = "";
@@ -292,6 +525,7 @@ analyzeButton.addEventListener("click", async () => {
   }
 
   const config = getCurrentConfig();
+  const teacherProfile = getTeacherProfile();
   setSubmitting(true);
   loadingCard.classList.remove("is-hidden");
   reportCard.classList.add("is-hidden");
@@ -306,13 +540,14 @@ analyzeButton.addEventListener("click", async () => {
         accessCode,
         image: selectedDataUrl,
         imageType: selectedFile.type,
-        profile: getTeacherProfile(),
+        profile: teacherProfile,
       }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "OpenAI API 调用失败，请稍后再试。");
 
     renderReport(data);
+    saveUsageRecord(teacherProfile.contentType);
     loadingCard.classList.add("is-hidden");
     reportCard.classList.remove("is-hidden");
     reportCard.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -355,6 +590,26 @@ resetButton.addEventListener("click", () => {
   document.querySelector("#uploadTitle").scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
+refreshStatsButton.addEventListener("click", renderUsageStats);
+teacherFilterSelect.addEventListener("change", renderUsageStats);
+exportStatsButton.addEventListener("click", exportUsageRecords);
+clearStatsButton.addEventListener("click", () => {
+  if (confirm("确定要清空本浏览器中的所有使用统计吗？此操作不会删除学生资料或报告正文，因为系统本来就没有保存这些内容；但统计次数将无法恢复。")) {
+    clearUsageRecords();
+  }
+});
+clearCurrentTeacherStatsButton.addEventListener("click", () => {
+  const teacherFilter = getSelectedTeacherFilter();
+  if (teacherFilter === "全部教师") {
+    alert("请先在教师筛选中选择某一位教师，再清空该教师统计。");
+    return;
+  }
+  if (!confirm(`确定要清空“${teacherFilter}”在本浏览器中的使用统计吗？此操作无法恢复。`)) return;
+  const remainingRecords = getUsageRecords().filter((record) => normalizeTeacherAlias(record.teacherAlias) !== teacherFilter);
+  localStorage.setItem(usageRecordsKey, JSON.stringify(remainingRecords));
+  renderUsageStats();
+});
+
 function resetWorkspace() {
   artworkInput.value = "";
   profileForm.reset();
@@ -375,4 +630,5 @@ function resetWorkspace() {
 }
 
 updateGenerateLabels();
+renderCurrentTeacher();
 restoreAccess();

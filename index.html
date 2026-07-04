@@ -33,172 +33,270 @@
           </div>
           <div class="teacher-box">
             <span>访问状态：<strong>已验证</strong></span>
+            <button class="ghost-button" id="analysisViewButton" type="button">开始分析</button>
+            <button class="ghost-button" id="dashboardViewButton" type="button">教师工作台</button>
             <button class="ghost-button" id="logoutButton" type="button">退出登录</button>
           </div>
         </header>
 
-        <section class="system-note">
-          本系统仅供学校心理教师、班主任或心理辅导人员在取得知情同意的前提下，进行学生绘画表达观察、访谈准备和辅导记录整理使用。系统生成内容仅为观察线索和访谈参考，不能替代专业心理诊断。当前测试版不保存上传图片和分析报告。请教师在生成后自行复制或打印保存。
-        </section>
-
-        <section class="workspace-grid">
-          <article class="info-panel">
-            <img class="panel-art" src="./assets/mind-hero.png" alt="房树人绘画观察辅助系统插图" />
-            <p class="section-kicker">使用边界</p>
-            <h2>观察线索，不是诊断结论</h2>
-            <ul class="notice-list">
-              <li>请在取得学生及监护人或学校相应授权的前提下使用。</li>
-              <li>不建议上传学生真实姓名、身份证、详细住址等敏感信息。</li>
-              <li>请上传学生在横向 A4 纸上绘制的房树人图画照片，建议图片清晰、光线均匀、完整包含纸张边界。</li>
-              <li>图画分析不能单独作为心理判断依据，必须结合访谈、观察和其他资料。</li>
-              <li>若涉及自伤、自杀、严重暴力风险，应立即启动学校危机干预流程，而不是仅依赖 AI 报告。</li>
-            </ul>
-          </article>
-
-          <section class="work-panel" aria-labelledby="uploadTitle">
-            <div class="panel-head">
-              <p class="section-kicker">学生绘画资料</p>
-              <h2 id="uploadTitle">上传图画并填写教师记录</h2>
-            </div>
-
-            <label class="drop-zone" id="dropZone">
-              <input id="artworkInput" type="file" accept="image/jpeg,image/png" />
-              <span class="upload-icon" aria-hidden="true">+</span>
-              <strong>上传学生房树人图画</strong>
-              <small>仅支持 JPG、JPEG、PNG，单张图片不超过 5MB。建议图片清晰、光线均匀、完整包含纸张边界。</small>
-            </label>
-
-            <div class="preview-wrap is-hidden" id="previewWrap">
-              <img id="previewImage" alt="已上传的学生房树人图画预览" />
-              <button class="ghost-button" id="changeImageButton" type="button">重新选择图片</button>
-            </div>
-
-            <form class="teacher-form" id="profileForm">
-              <div class="field">
-                <label for="studentAlias">学生编号或化名</label>
-                <input id="studentAlias" name="studentAlias" placeholder="不建议填写真实姓名" required />
-              </div>
-              <div class="field">
-                <label for="ageRange">年龄段</label>
-                <select id="ageRange" name="ageRange" required>
-                  <option value="">请选择</option>
-                  <option>12-15</option>
-                  <option>16-18</option>
-                  <option>19-22</option>
-                  <option>23-28</option>
-                  <option>29-35</option>
-                  <option>36-45</option>
-                  <option>46-55</option>
-                  <option>56岁以上</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="gender">性别</label>
-                <select id="gender" name="gender" required>
-                  <option value="">请选择</option>
-                  <option>男</option>
-                  <option>女</option>
-                  <option>其他</option>
-                  <option>不填写</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="grade">年级</label>
-                <select id="grade" name="grade" required>
-                  <option value="">请选择</option>
-                  <option>小学高年级</option>
-                  <option>初中</option>
-                  <option>高中</option>
-                  <option>大学</option>
-                  <option>其他</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="drawingContext">绘画情境</label>
-                <select id="drawingContext" name="drawingContext" required>
-                  <option value="">请选择</option>
-                  <option>课堂活动</option>
-                  <option>个别辅导</option>
-                  <option>心理筛查</option>
-                  <option>自愿表达</option>
-                  <option>其他</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="riskInfo">是否存在明显风险信息</label>
-                <select id="riskInfo" name="riskInfo" required>
-                  <option value="">请选择</option>
-                  <option>无明显风险</option>
-                  <option>情绪低落明显</option>
-                  <option>长期拒学或厌学</option>
-                  <option>自伤自杀言语或行为</option>
-                  <option>严重亲子冲突</option>
-                  <option>攻击或冲动行为</option>
-                  <option>其他</option>
-                </select>
-              </div>
-              <div class="field field-wide">
-                <label for="recentBehavior">学生近期主要表现</label>
-                <textarea id="recentBehavior" name="recentBehavior" rows="3" required></textarea>
-              </div>
-              <div class="field field-wide">
-                <label for="teacherConcern">教师关注的问题</label>
-                <textarea id="teacherConcern" name="teacherConcern" rows="3" required></textarea>
-              </div>
-              <div class="field field-wide">
-                <label for="studentNarrative">学生本人描述或讲述内容</label>
-                <textarea id="studentNarrative" name="studentNarrative" rows="3" placeholder="可填写学生对图画、近期状态或事件的原话/概述" required></textarea>
-              </div>
-              <div class="field field-wide">
-                <label for="contentType">教师希望生成的内容</label>
-                <select id="contentType" name="contentType" required>
-                  <option value="心灵对话" selected>心灵对话：温暖、敏锐、文学性较强，适合深入理解作画者的内心体验，像一封心理对话信。</option>
-                  <option value="教师专业观察报告">教师专业观察报告：结构规范、谨慎细致，适合学校心理教师个案研讨、访谈准备和辅导记录。</option>
-                  <option value="后续访谈问题">后续访谈问题：根据图画和背景资料，生成适合教师继续了解学生的访谈问题清单。</option>
-                  <option value="家校沟通建议">家校沟通建议：帮助教师与家长温和、清晰、谨慎地沟通学生状态与支持方式。</option>
-                  <option value="辅导记录初稿">辅导记录初稿：生成适合学校心理辅导档案使用的辅导记录初稿。</option>
-                  <option value="风险提示与转介建议">风险提示与转介建议：重点分析可能存在的风险线索，并给出进一步评估、危机干预或转介建议。</option>
-                </select>
-              </div>
-
-              <div class="field field-wide consent-box">
-                <label><input type="checkbox" id="consentAuth" required /> 我确认已取得必要的使用授权或知情同意</label>
-                <label><input type="checkbox" id="consentPrivacy" required /> 我确认不会上传学生真实姓名、身份证号、详细住址等敏感信息</label>
-                <label><input type="checkbox" id="consentNoDiagnosis" required /> 我理解本系统仅用于心理观察和访谈辅助，不构成心理诊断</label>
-              </div>
-            </form>
-
-            <button class="primary-button" id="analyzeButton" type="button" disabled>生成心灵对话</button>
-            <p class="form-hint" id="formHint">请先上传图画，并补充必填记录信息。</p>
-          </section>
-        </section>
-
-        <section class="loading-card is-hidden" id="loadingCard" aria-live="polite">
-          <div class="breathing-circle"></div>
-          <p>AI 正在整理画面观察、背景资料和访谈线索，请稍等片刻...</p>
-        </section>
-
-        <section class="report-card is-hidden" id="reportCard" aria-live="polite">
-          <div class="report-toolbar">
-            <div class="report-top">
-              <img id="reportImage" alt="报告中的图画缩略图" />
-              <div>
-                <p class="section-kicker">教师内部报告</p>
-                <h2 id="reportTitle">房树人绘画心理观察辅助报告</h2>
-              </div>
-            </div>
-            <div class="report-actions">
-              <button class="ghost-button" id="copyReportButton" type="button">复制报告</button>
-              <button class="ghost-button" id="printReportButton" type="button">打印报告</button>
-              <button class="ghost-button" id="resetButton" type="button">重新分析</button>
+        <section class="teacher-identity-panel" aria-label="当前教师身份设置">
+          <div>
+            <p class="section-kicker">本机教师身份</p>
+            <h2>当前教师：<span id="currentTeacherLabel">未设置</span></h2>
+            <p class="teacher-identity-hint">教师身份仅用于本浏览器中的使用统计，建议填写教师代号或昵称。请勿填写身份证号、手机号等敏感信息。</p>
+          </div>
+          <div class="teacher-identity-form">
+            <label for="teacherAliasInput">教师代号或昵称</label>
+            <div class="teacher-identity-actions">
+              <input id="teacherAliasInput" type="text" maxlength="30" placeholder="例如 teacher001 或 张老师" />
+              <button class="ghost-button" id="saveTeacherButton" type="button">保存教师身份</button>
             </div>
           </div>
-          <div class="professional-report markdown-report" id="reportContent"></div>
         </section>
 
-        <p class="disclaimer">
-          当前测试版不保存上传图片和分析报告。请教师在生成后自行复制或打印保存。本报告由 AI 根据图像和文字资料生成，仅用于学校心理教育、绘画表达观察和访谈准备，不构成心理诊断、医学诊断或治疗建议。
-        </p>
+        <section id="analysisView">
+          <section class="system-note">
+            本系统仅供学校心理教师、班主任或心理辅导人员在取得知情同意的前提下，进行学生绘画表达观察、访谈准备和辅导记录整理使用。系统生成内容仅为观察线索和访谈参考，不能替代专业心理诊断。当前测试版不保存上传图片和分析报告。请教师在生成后自行复制或打印保存。
+          </section>
+
+          <section class="workspace-grid">
+            <article class="info-panel">
+              <img class="panel-art" src="./assets/mind-hero.png" alt="房树人绘画观察辅助系统插图" />
+              <p class="section-kicker">使用边界</p>
+              <h2>观察线索，不是诊断结论</h2>
+              <ul class="notice-list">
+                <li>请在取得学生及监护人或学校相应授权的前提下使用。</li>
+                <li>不建议上传学生真实姓名、身份证、详细住址等敏感信息。</li>
+                <li>请上传学生在横向 A4 纸上绘制的房树人图画照片，建议图片清晰、光线均匀、完整包含纸张边界。</li>
+                <li>图画分析不能单独作为心理判断依据，必须结合访谈、观察和其他资料。</li>
+                <li>若涉及自伤、自杀、严重暴力风险，应立即启动学校危机干预流程，而不是仅依赖 AI 报告。</li>
+              </ul>
+            </article>
+
+            <section class="work-panel" aria-labelledby="uploadTitle">
+              <div class="panel-head">
+                <p class="section-kicker">学生绘画资料</p>
+                <h2 id="uploadTitle">上传图画并填写教师记录</h2>
+              </div>
+
+              <label class="drop-zone" id="dropZone">
+                <input id="artworkInput" type="file" accept="image/jpeg,image/png" />
+                <span class="upload-icon" aria-hidden="true">+</span>
+                <strong>上传学生房树人图画</strong>
+                <small>仅支持 JPG、JPEG、PNG，单张图片不超过 5MB。建议图片清晰、光线均匀、完整包含纸张边界。</small>
+              </label>
+
+              <div class="preview-wrap is-hidden" id="previewWrap">
+                <img id="previewImage" alt="已上传的学生房树人图画预览" />
+                <button class="ghost-button" id="changeImageButton" type="button">重新选择图片</button>
+              </div>
+
+              <form class="teacher-form" id="profileForm">
+                <div class="field">
+                  <label for="studentAlias">学生编号或化名</label>
+                  <input id="studentAlias" name="studentAlias" placeholder="不建议填写真实姓名" required />
+                </div>
+                <div class="field">
+                  <label for="ageRange">年龄段</label>
+                  <select id="ageRange" name="ageRange" required>
+                    <option value="">请选择</option>
+                    <option>12-15</option>
+                    <option>16-18</option>
+                    <option>19-22</option>
+                    <option>23-28</option>
+                    <option>29-35</option>
+                    <option>36-45</option>
+                    <option>46-55</option>
+                    <option>56岁以上</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="gender">性别</label>
+                  <select id="gender" name="gender" required>
+                    <option value="">请选择</option>
+                    <option>男</option>
+                    <option>女</option>
+                    <option>其他</option>
+                    <option>不填写</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="grade">年级</label>
+                  <select id="grade" name="grade" required>
+                    <option value="">请选择</option>
+                    <option>小学高年级</option>
+                    <option>初中</option>
+                    <option>高中</option>
+                    <option>大学</option>
+                    <option>其他</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="drawingContext">绘画情境</label>
+                  <select id="drawingContext" name="drawingContext" required>
+                    <option value="">请选择</option>
+                    <option>课堂活动</option>
+                    <option>个别辅导</option>
+                    <option>心理筛查</option>
+                    <option>自愿表达</option>
+                    <option>其他</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="riskInfo">是否存在明显风险信息</label>
+                  <select id="riskInfo" name="riskInfo" required>
+                    <option value="">请选择</option>
+                    <option>无明显风险</option>
+                    <option>情绪低落明显</option>
+                    <option>长期拒学或厌学</option>
+                    <option>自伤自杀言语或行为</option>
+                    <option>严重亲子冲突</option>
+                    <option>攻击或冲动行为</option>
+                    <option>其他</option>
+                  </select>
+                </div>
+                <div class="field field-wide">
+                  <label for="recentBehavior">学生近期主要表现</label>
+                  <textarea id="recentBehavior" name="recentBehavior" rows="3" required></textarea>
+                </div>
+                <div class="field field-wide">
+                  <label for="teacherConcern">教师关注的问题</label>
+                  <textarea id="teacherConcern" name="teacherConcern" rows="3" required></textarea>
+                </div>
+                <div class="field field-wide">
+                  <label for="studentNarrative">学生本人描述或讲述内容</label>
+                  <textarea id="studentNarrative" name="studentNarrative" rows="3" placeholder="可填写学生对图画、近期状态或事件的原话/概述" required></textarea>
+                </div>
+                <div class="field field-wide">
+                  <label for="contentType">教师希望生成的内容</label>
+                  <select id="contentType" name="contentType" required>
+                    <option value="心灵对话" selected>心灵对话：温暖、敏锐、文学性较强，适合深入理解作画者的内心体验，像一封心理对话信。</option>
+                    <option value="教师专业观察报告">教师专业观察报告：结构规范、谨慎细致，适合学校心理教师个案研讨、访谈准备和辅导记录。</option>
+                    <option value="后续访谈问题">后续访谈问题：根据图画和背景资料，生成适合教师继续了解学生的访谈问题清单。</option>
+                    <option value="家校沟通建议">家校沟通建议：帮助教师与家长温和、清晰、谨慎地沟通学生状态与支持方式。</option>
+                    <option value="辅导记录初稿">辅导记录初稿：生成适合学校心理辅导档案使用的辅导记录初稿。</option>
+                    <option value="风险提示与转介建议">风险提示与转介建议：重点分析可能存在的风险线索，并给出进一步评估、危机干预或转介建议。</option>
+                  </select>
+                </div>
+
+                <div class="field field-wide consent-box">
+                  <label><input type="checkbox" id="consentAuth" required /> 我确认已取得必要的使用授权或知情同意</label>
+                  <label><input type="checkbox" id="consentPrivacy" required /> 我确认不会上传学生真实姓名、身份证号、详细住址等敏感信息</label>
+                  <label><input type="checkbox" id="consentNoDiagnosis" required /> 我理解本系统仅用于心理观察和访谈辅助，不构成心理诊断</label>
+                </div>
+              </form>
+
+              <button class="primary-button" id="analyzeButton" type="button" disabled>生成心灵对话</button>
+              <p class="form-hint" id="formHint">请先上传图画，并补充必填记录信息。</p>
+            </section>
+          </section>
+
+          <section class="loading-card is-hidden" id="loadingCard" aria-live="polite">
+            <div class="breathing-circle"></div>
+            <p>AI 正在整理画面观察、背景资料和访谈线索，请稍等片刻...</p>
+          </section>
+
+          <section class="report-card is-hidden" id="reportCard" aria-live="polite">
+            <div class="report-toolbar">
+              <div class="report-top">
+                <img id="reportImage" alt="报告中的图画缩略图" />
+                <div>
+                  <p class="section-kicker">教师内部报告</p>
+                  <h2 id="reportTitle">房树人绘画心理观察辅助报告</h2>
+                </div>
+              </div>
+              <div class="report-actions">
+                <button class="ghost-button" id="copyReportButton" type="button">复制报告</button>
+                <button class="ghost-button" id="printReportButton" type="button">打印报告</button>
+                <button class="ghost-button" id="resetButton" type="button">重新分析</button>
+              </div>
+            </div>
+            <div class="professional-report markdown-report" id="reportContent"></div>
+          </section>
+
+          <p class="disclaimer">
+            当前测试版不保存上传图片和分析报告。请教师在生成后自行复制或打印保存。本报告由 AI 根据图像和文字资料生成，仅用于学校心理教育、绘画表达观察和访谈准备，不构成心理诊断、医学诊断或治疗建议。
+          </p>
+        </section>
+
+        <section class="dashboard-view is-hidden" id="dashboardView" aria-labelledby="dashboardTitle">
+          <section class="dashboard-head">
+            <div>
+              <p class="section-kicker">本机安全统计</p>
+              <h2 id="dashboardTitle">心灵画卷 · 房树人绘画心理分析教师工作台</h2>
+            </div>
+            <button class="ghost-button" id="backToAnalysisButton" type="button">返回分析页面</button>
+          </section>
+
+          <section class="dashboard-grid" aria-label="使用统计概览">
+            <article class="stat-card">
+              <span>今日生成次数</span>
+              <strong id="todayCount">0</strong>
+            </article>
+            <article class="stat-card">
+              <span>累计生成次数</span>
+              <strong id="totalCount">0</strong>
+            </article>
+            <article class="stat-card">
+              <span>风险提示与转介建议生成次数</span>
+              <strong id="riskCount">0</strong>
+            </article>
+          </section>
+
+          <section class="dashboard-panel">
+            <div class="panel-head">
+              <p class="section-kicker">教师筛选</p>
+              <h2>按教师代号查看本机统计</h2>
+            </div>
+            <div class="field dashboard-filter">
+              <label for="teacherFilterSelect">筛选教师</label>
+              <select id="teacherFilterSelect">
+                <option value="全部教师">全部教师</option>
+              </select>
+            </div>
+          </section>
+
+          <section class="dashboard-panel">
+            <div class="panel-head">
+              <p class="section-kicker">内容类型统计</p>
+              <h2>各内容类型生成次数</h2>
+            </div>
+            <div class="type-list" id="typeStatsList"></div>
+          </section>
+
+          <section class="dashboard-panel">
+            <div class="panel-head">
+              <p class="section-kicker">最近记录</p>
+              <h2>最近 10 条生成记录</h2>
+            </div>
+            <div class="records-table-wrap">
+              <table class="records-table">
+                <thead>
+                  <tr>
+                    <th>时间</th>
+                    <th>教师代号</th>
+                    <th>生成内容类型</th>
+                    <th>是否风险相关</th>
+                  </tr>
+                </thead>
+                <tbody id="recentRecordsBody">
+                  <tr><td colspan="4">暂无统计记录</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="dashboard-actions">
+            <button class="ghost-button" id="refreshStatsButton" type="button">刷新统计</button>
+            <button class="ghost-button" id="exportStatsButton" type="button">导出统计 JSON</button>
+            <button class="ghost-button danger-button" id="clearStatsButton" type="button">清空本机统计记录</button>
+            <button class="ghost-button danger-button" id="clearCurrentTeacherStatsButton" type="button">清空当前教师统计</button>
+          </section>
+
+          <p class="dashboard-note">
+            当前工作台仅统计本浏览器中的安全使用元数据，不保存学生图片、姓名、背景资料或报告正文。心灵画卷生成内容仅供绘画表达观察、访谈准备和学校心理辅导参考，不构成心理诊断。如发现自伤、自杀、严重暴力、长期失眠、明显拒学等风险线索，应及时启动人工评估、联系监护人并寻求专业资源支持。
+          </p>
+        </section>
       </section>
     </main>
 
