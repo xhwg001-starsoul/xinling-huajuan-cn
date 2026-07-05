@@ -3,16 +3,106 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>心灵画卷 | 房树人绘画心理观察辅助系统</title>
+    <title>心灵画卷｜绘画心理观察辅助系统</title>
+    <meta
+      name="description"
+      content="心灵画卷是面向学校心理教师与班主任的绘画心理观察辅助系统，用于辅助生成心理观察线索、访谈思路、辅导建议和风险提示，不构成心理诊断。"
+    />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main>
-      <section class="login-screen" id="loginScreen">
+      <section class="public-home" id="publicHomeView">
+        <nav class="public-nav" aria-label="公开首页导航">
+          <strong>心灵画卷</strong>
+          <div>
+            <a href="#features">功能</a>
+            <a href="#scenarios">适用场景</a>
+            <a href="#ethics">安全伦理</a>
+            <button class="ghost-button internal-entry-button" type="button">教师内部试用入口</button>
+          </div>
+        </nav>
+
+        <section class="public-hero">
+          <div>
+            <p class="eyebrow">绘画表达观察辅助</p>
+            <h1>心灵画卷</h1>
+            <p class="public-subtitle">面向学校心理教师与班主任的绘画心理观察辅助系统</p>
+            <p class="public-copy">
+              心灵画卷不是心理诊断工具，而是帮助学校心理教师、班主任和心理辅导人员，根据学生房树人绘画与背景资料，生成心理观察线索、访谈思路、辅导建议、家校沟通建议和风险提示的辅助系统。
+            </p>
+            <div class="public-actions">
+              <button class="primary-button internal-entry-button" type="button">教师内部试用入口</button>
+              <a class="ghost-link" href="#features">了解功能</a>
+            </div>
+          </div>
+          <img class="public-hero-art" src="./assets/mind-hero.png" alt="心灵画卷绘画观察辅助系统" />
+        </section>
+
+        <section class="public-section" id="features">
+          <p class="section-kicker">功能模块</p>
+          <h2>它可以帮助教师生成什么？</h2>
+          <div class="public-card-grid">
+            <article><h3>心灵对话</h3><p>以温暖、敏锐、富有文学性的方式，帮助理解作画者可能的内心体验。</p></article>
+            <article><h3>教师专业观察报告</h3><p>生成结构化、谨慎细致的绘画心理观察报告，用于个案研讨和访谈准备。</p></article>
+            <article><h3>后续访谈问题</h3><p>提供进一步了解学生内心世界的开放式访谈问题。</p></article>
+            <article><h3>家校沟通建议</h3><p>帮助教师以温和、尊重、合作的方式与家长沟通。</p></article>
+            <article><h3>辅导记录初稿</h3><p>辅助整理学校心理辅导过程中的观察与建议。</p></article>
+            <article><h3>风险提示与转介建议</h3><p>当出现自伤、自杀、严重暴力、明显拒学等风险线索时，提示启动人工评估和专业支持。</p></article>
+          </div>
+        </section>
+
+        <section class="public-section" id="scenarios">
+          <p class="section-kicker">适用范围</p>
+          <h2>适用场景</h2>
+          <div class="pill-list">
+            <span>学校心理辅导</span>
+            <span>班主任个案访谈准备</span>
+            <span>家校沟通前的思路整理</span>
+            <span>心理问题的初步观察</span>
+            <span>心理教师个案研讨</span>
+            <span>社区青少年心理服务</span>
+          </div>
+        </section>
+
+        <section class="public-section">
+          <p class="section-kicker">使用流程</p>
+          <h2>基本使用流程</h2>
+          <ol class="public-steps">
+            <li><strong>上传绘画图片</strong><span>上传房、树、人绘画图片。</span></li>
+            <li><strong>填写背景资料</strong><span>补充必要且非敏感的观察背景。</span></li>
+            <li><strong>选择生成内容</strong><span>选择教师希望生成的辅助材料类型。</span></li>
+            <li><strong>整理与导出</strong><span>生成、复制、打印或导出报告。</span></li>
+          </ol>
+        </section>
+
+        <section class="public-section" id="ethics">
+          <p class="section-kicker">伦理边界</p>
+          <h2>安全与伦理边界</h2>
+          <ul class="notice-list public-notice">
+            <li>本系统不构成心理诊断。</li>
+            <li>生成内容仅供绘画表达观察、访谈准备和学校心理辅导参考。</li>
+            <li>不建议上传学生真实姓名、身份证号、详细住址等敏感信息。</li>
+            <li>涉及自伤、自杀、严重暴力、长期抑郁、情绪狂躁等风险时，应及时启动人工评估、联系监护人并寻求专业资源支持。</li>
+            <li>AI 生成内容应由具备心理教育或辅导经验的教师审慎使用。</li>
+          </ul>
+        </section>
+
+        <section class="public-section trial-section">
+          <p class="section-kicker">内部试用</p>
+          <h2>学校内部试用</h2>
+          <p>
+            当前系统处于学校内部试用阶段。教师或机构如需试用，请通过线下授权获取内部访问码。进入内部试用区后，还需使用管理员或教师账号登录。
+          </p>
+          <button class="primary-button internal-entry-button" type="button">进入教师内部试用入口</button>
+        </section>
+      </section>
+
+      <section class="login-screen is-hidden" id="loginScreen">
         <div class="login-card">
           <p class="eyebrow">心灵画卷</p>
-          <h1>教师内部测试入口</h1>
-          <p class="login-copy">本系统为学校心理辅导内部测试工具，暂不向普通用户开放。</p>
+          <h1>教师内部试用入口</h1>
+          <p class="login-copy">本区域仅供已获得授权的学校教师、心理辅导人员或机构工作人员试用。请输入内部访问码后继续。</p>
           <form class="login-form" id="loginForm">
             <div class="field">
               <label for="accessCode">内部访问码</label>
@@ -21,6 +111,7 @@
             <button class="primary-button" type="submit">进入系统</button>
             <p class="form-hint" id="loginMessage">如需开通内部测试访问，请联系管理员微信：xinghaiweiguang</p>
           </form>
+          <button class="ghost-button back-public-button" id="backPublicButton" type="button">返回公开首页</button>
         </div>
       </section>
 
@@ -33,11 +124,55 @@
           </div>
           <div class="teacher-box">
             <span>访问状态：<strong>已验证</strong></span>
+            <span id="currentUserBadge">当前登录：未登录</span>
+            <span id="currentRoleBadge">角色：未登录</span>
             <button class="ghost-button" id="analysisViewButton" type="button">开始分析</button>
             <button class="ghost-button" id="dashboardViewButton" type="button">教师工作台</button>
             <button class="ghost-button" id="logoutButton" type="button">退出登录</button>
           </div>
         </header>
+
+        <section class="account-panel" id="accountPanel">
+          <div>
+            <p class="section-kicker">本机演示账号</p>
+            <h2 id="accountPanelTitle">请先登录后使用心灵画卷</h2>
+            <p class="account-note">当前账号系统为本机演示版，仅用于学校内部试用流程和权限结构演示。账号信息保存在本浏览器中，不等同于正式云端账号系统。正式上线前应升级为后端认证和数据库权限管理。</p>
+          </div>
+
+          <form class="account-form is-hidden" id="initialAdminForm">
+            <p class="form-hint">首次使用，请创建本机管理员账号。</p>
+            <div class="field">
+              <label for="initialAdminUsername">管理员用户名</label>
+              <input id="initialAdminUsername" name="username" autocomplete="username" placeholder="例如 admin" />
+            </div>
+            <div class="field">
+              <label for="initialAdminDisplayName">管理员显示名称</label>
+              <input id="initialAdminDisplayName" name="displayName" placeholder="例如 张老师 或 admin" />
+            </div>
+            <div class="field">
+              <label for="initialAdminPassword">管理员密码</label>
+              <input id="initialAdminPassword" name="password" type="password" autocomplete="new-password" />
+            </div>
+            <div class="field">
+              <label for="initialAdminConfirmPassword">确认密码</label>
+              <input id="initialAdminConfirmPassword" name="confirmPassword" type="password" autocomplete="new-password" />
+            </div>
+            <button class="primary-button" type="submit">创建管理员并登录</button>
+          </form>
+
+          <form class="account-form is-hidden" id="userLoginForm">
+            <div class="field">
+              <label for="loginUsername">用户名</label>
+              <input id="loginUsername" name="username" autocomplete="username" />
+            </div>
+            <div class="field">
+              <label for="loginPassword">密码</label>
+              <input id="loginPassword" name="password" type="password" autocomplete="current-password" />
+            </div>
+            <button class="primary-button" type="submit">登录账号</button>
+          </form>
+          <p class="form-hint" id="accountMessage">请先登录后使用心灵画卷。</p>
+        </section>
 
         <section class="teacher-identity-panel" aria-label="当前教师身份设置">
           <div>
@@ -236,6 +371,53 @@
               <h2 id="dashboardTitle">心灵画卷 · 房树人绘画心理分析教师工作台</h2>
             </div>
             <button class="ghost-button" id="backToAnalysisButton" type="button">返回分析页面</button>
+          </section>
+
+          <section class="dashboard-panel" id="userManagementPanel">
+            <div class="panel-head">
+              <p class="section-kicker">管理员功能</p>
+              <h2>账号管理</h2>
+              <p class="form-hint">请使用教师代号或昵称创建账号，不建议填写手机号、身份证号等敏感信息。</p>
+            </div>
+            <form class="organization-form" id="createTeacherForm">
+              <div class="field">
+                <label for="teacherUsername">教师用户名</label>
+                <input id="teacherUsername" name="username" placeholder="例如 teacher001" />
+              </div>
+              <div class="field">
+                <label for="teacherDisplayName">显示名称</label>
+                <input id="teacherDisplayName" name="displayName" placeholder="例如 张老师" />
+              </div>
+              <div class="field">
+                <label for="teacherPassword">初始密码</label>
+                <input id="teacherPassword" name="password" type="password" autocomplete="new-password" />
+              </div>
+              <div class="field">
+                <label for="teacherConfirmPassword">确认密码</label>
+                <input id="teacherConfirmPassword" name="confirmPassword" type="password" autocomplete="new-password" />
+              </div>
+            </form>
+            <div class="dashboard-actions">
+              <button class="ghost-button" id="createTeacherButton" type="button">创建教师账号</button>
+            </div>
+            <p class="form-hint" id="userManagementMessage"></p>
+            <div class="records-table-wrap">
+              <table class="records-table">
+                <thead>
+                  <tr>
+                    <th>用户名</th>
+                    <th>显示名称</th>
+                    <th>角色</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="userListBody">
+                  <tr><td colspan="6">暂无用户</td></tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section class="dashboard-panel">

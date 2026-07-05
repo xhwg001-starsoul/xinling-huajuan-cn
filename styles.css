@@ -45,6 +45,188 @@ textarea {
   padding: 24px;
 }
 
+.public-home {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 24px 0 42px;
+}
+
+.public-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  padding: 12px 0 28px;
+}
+
+.public-nav strong {
+  color: #6f5739;
+  font-size: 1.18rem;
+}
+
+.public-nav div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.public-nav a,
+.ghost-link {
+  color: var(--sage-dark);
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.public-hero,
+.public-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.84);
+  box-shadow: 0 16px 42px rgba(75, 62, 42, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.public-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 32px;
+  align-items: center;
+  padding: clamp(28px, 5vw, 56px);
+}
+
+.public-hero h1 {
+  color: #6f5739;
+  font-size: clamp(3.2rem, 7vw, 6rem);
+}
+
+.public-subtitle {
+  margin: 12px 0 0;
+  color: #5d4c36;
+  font-size: clamp(1.18rem, 2.2vw, 1.75rem);
+  line-height: 1.5;
+  font-weight: 800;
+}
+
+.public-copy {
+  margin: 20px 0 0;
+  color: var(--muted);
+  line-height: 1.9;
+  font-size: 1.03rem;
+}
+
+.public-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  margin-top: 24px;
+}
+
+.public-actions .primary-button,
+.trial-section .primary-button {
+  width: auto;
+  min-width: 220px;
+  padding: 0 24px;
+}
+
+.public-hero-art {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.public-section {
+  margin-top: 24px;
+  padding: clamp(24px, 4vw, 36px);
+}
+
+.public-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.public-card-grid article {
+  padding: 18px;
+  border: 1px solid rgba(104, 88, 63, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 252, 245, 0.72);
+}
+
+.public-card-grid h3 {
+  margin: 0 0 10px;
+  color: #5d4c36;
+}
+
+.public-card-grid p,
+.trial-section p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.pill-list span {
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: #eef2e8;
+  color: var(--sage-dark);
+  font-weight: 800;
+}
+
+.public-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 22px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.public-steps li {
+  padding: 18px;
+  border: 1px solid rgba(104, 88, 63, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 252, 245, 0.72);
+}
+
+.public-steps strong,
+.public-steps span {
+  display: block;
+}
+
+.public-steps strong {
+  color: #5d4c36;
+}
+
+.public-steps span {
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.public-notice {
+  margin-top: 20px;
+}
+
+.trial-section .primary-button {
+  margin-top: 20px;
+}
+
+.back-public-button {
+  width: 100%;
+  margin-top: 14px;
+}
+
 .login-card {
   width: min(480px, 100%);
   padding: 38px;
@@ -135,6 +317,7 @@ h2 {
 }
 
 .system-note,
+.account-panel,
 .teacher-identity-panel,
 .info-panel,
 .work-panel,
@@ -154,6 +337,30 @@ h2 {
   padding: 18px 22px;
   color: #5b5249;
   line-height: 1.75;
+}
+
+.account-panel {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.1fr);
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 20px 22px;
+}
+
+.account-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.account-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.account-form .primary-button {
+  grid-column: 1 / -1;
 }
 
 .teacher-identity-panel {
@@ -323,6 +530,19 @@ h2 {
 label {
   color: #574a38;
   font-weight: 800;
+}
+
+.consent-box label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  line-height: 1.6;
+}
+
+.consent-box input {
+  width: auto;
+  margin-top: 0.32em;
+  flex: 0 0 auto;
 }
 
 input,
@@ -623,6 +843,11 @@ textarea:focus {
   background: rgba(239, 244, 232, 0.58);
 }
 
+.table-button {
+  min-height: 36px;
+  padding: 0 14px;
+}
+
 .dashboard-actions {
   display: flex;
   flex-wrap: wrap;
@@ -717,6 +942,9 @@ textarea:focus {
   }
 
   .topbar,
+  .public-nav,
+  .public-hero,
+  .account-panel,
   .workspace-grid,
   .teacher-identity-panel,
   .dashboard-head,
@@ -735,6 +963,12 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
+  .public-card-grid,
+  .public-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .account-form,
   .organization-form,
   .overview-grid,
   .report-meta {
@@ -765,6 +999,7 @@ textarea:focus {
   }
 
   .login-screen,
+  .public-home,
   .topbar,
   .teacher-identity-panel,
   .system-note,

@@ -1,8 +1,16 @@
+const publicHomeView = document.querySelector("#publicHomeView");
 const loginScreen = document.querySelector("#loginScreen");
 const appShell = document.querySelector("#appShell");
 const loginForm = document.querySelector("#loginForm");
 const loginMessage = document.querySelector("#loginMessage");
 const logoutButton = document.querySelector("#logoutButton");
+const currentUserBadge = document.querySelector("#currentUserBadge");
+const currentRoleBadge = document.querySelector("#currentRoleBadge");
+const accountPanel = document.querySelector("#accountPanel");
+const accountPanelTitle = document.querySelector("#accountPanelTitle");
+const initialAdminForm = document.querySelector("#initialAdminForm");
+const userLoginForm = document.querySelector("#userLoginForm");
+const accountMessage = document.querySelector("#accountMessage");
 const analysisViewButton = document.querySelector("#analysisViewButton");
 const dashboardViewButton = document.querySelector("#dashboardViewButton");
 const backToAnalysisButton = document.querySelector("#backToAnalysisButton");
@@ -53,9 +61,18 @@ const overviewOrganizationType = document.querySelector("#overviewOrganizationTy
 const overviewUsageScenario = document.querySelector("#overviewUsageScenario");
 const overviewTeacherAlias = document.querySelector("#overviewTeacherAlias");
 const overviewTotalCount = document.querySelector("#overviewTotalCount");
+const userManagementPanel = document.querySelector("#userManagementPanel");
+const createTeacherForm = document.querySelector("#createTeacherForm");
+const createTeacherButton = document.querySelector("#createTeacherButton");
+const userManagementMessage = document.querySelector("#userManagementMessage");
+const userListBody = document.querySelector("#userListBody");
+const internalEntryButtons = document.querySelectorAll(".internal-entry-button");
+const backPublicButton = document.querySelector("#backPublicButton");
 
 const accessStateKey = "xinling_access_ok";
 const accessCodeKey = "xinling_access_code";
+const currentUserKey = "soul_painting_current_user";
+const usersKey = "soul_painting_users";
 const usageRecordsKey = "soul_painting_usage_records";
 const currentTeacherKey = "soul_painting_current_teacher";
 const organizationProfileKey = "soul_painting_organization_profile";
@@ -77,16 +94,202 @@ const contentConfig = {
 
 const contentTypes = Object.keys(contentConfig);
 
+function getUsers() {
+  try {
+    const users = JSON.parse(localStorage.getItem(usersKey) || "[]");
+    return Array.isArray(users) ? users : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveUsers(users) {
+  localStorage.setItem(usersKey, JSON.stringify(users));
+}
+
+function createUserId() {
+  return `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeUsername(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidUsername(username) {
+  return /^[a-z0-9_-]{3,32}$/.test(username);
+}
+
+async function hashPassword(password) {
+  const text = String(password || "");
+  const bytes = new TextEncoder().encode(`xinling-local-demo:${text}`);
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function verifyPassword(password, user) {
+  const passwordHash = await hashPassword(password);
+  return user.passwordHash === passwordHash;
+}
+
+function getCurrentUser() {
+  try {
+    const current = JSON.parse(localStorage.getItem(currentUserKey) || "null");
+    if (!current?.id) return null;
+    return getUsers().find((user) => user.id === current.id && user.isActive !== false) || null;
+  } catch {
+    return null;
+  }
+}
+
+function getRoleLabel(role) {
+  return role === "admin" ? "管理员" : "教师";
+}
+
+function isAdmin(user = getCurrentUser()) {
+  return user?.role === "admin";
+}
+
+function isTeacher(user = getCurrentUser()) {
+  return user?.role === "teacher";
+}
+
+function canManageUsers() {
+  return isAdmin();
+}
+
+function canEditOrganizationProfile() {
+  return isAdmin();
+}
+
+function requireLogin(message = "请先登录后使用心灵画卷。") {
+  const user = getCurrentUser();
+  if (user) return true;
+  setStatus(message, true);
+  renderLoginPanel();
+  return false;
+}
+
+function setCurrentUser(user) {
+  localStorage.setItem(
+    currentUserKey,
+    JSON.stringify({
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      role: user.role,
+      loggedInAt: new Date().toISOString(),
+    }),
+  );
+  localStorage.setItem(currentTeacherKey, user.displayName);
+  renderCurrentUserInfo();
+  renderLoginPanel();
+  renderUsageStats();
+}
+
+function logoutUser() {
+  localStorage.removeItem(currentUserKey);
+  renderCurrentUserInfo();
+  renderLoginPanel();
+  showAnalysisView();
+  renderUsageStats();
+}
+
+async function createInitialAdmin(formData) {
+  const users = getUsers();
+  if (users.length) throw new Error("本机已存在用户，请直接登录。");
+  const username = normalizeUsername(formData.get("username"));
+  const displayName = sanitizeText(formData.get("displayName")) || username;
+  const password = String(formData.get("password") || "");
+  const confirmPassword = String(formData.get("confirmPassword") || "");
+  if (!isValidUsername(username)) throw new Error("用户名只能包含字母、数字、下划线、短横线，长度 3-32 位。");
+  if (!password) throw new Error("密码不能为空。");
+  if (password !== confirmPassword) throw new Error("两次密码不一致。");
+
+  const admin = {
+    id: createUserId(),
+    username,
+    displayName,
+    role: "admin",
+    passwordHash: await hashPassword(password),
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    lastLoginAt: new Date().toISOString(),
+  };
+  saveUsers([admin]);
+  setCurrentUser(admin);
+  return admin;
+}
+
+async function createTeacherUser(formData) {
+  if (!canManageUsers()) throw new Error("只有管理员可以创建教师账号。");
+  const users = getUsers();
+  const username = normalizeUsername(formData.get("username"));
+  const displayName = sanitizeText(formData.get("displayName")) || username;
+  const password = String(formData.get("password") || "");
+  const confirmPassword = String(formData.get("confirmPassword") || "");
+  if (!isValidUsername(username)) throw new Error("用户名只能包含字母、数字、下划线、短横线，长度 3-32 位。");
+  if (users.some((user) => user.username === username)) throw new Error("用户名已存在，请换一个。");
+  if (!password) throw new Error("初始密码不能为空。");
+  if (password !== confirmPassword) throw new Error("两次密码不一致。");
+
+  users.push({
+    id: createUserId(),
+    username,
+    displayName,
+    role: "teacher",
+    passwordHash: await hashPassword(password),
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    lastLoginAt: "",
+  });
+  saveUsers(users);
+  createTeacherForm.reset();
+  renderUserManagementPanel();
+}
+
+async function loginUser(formData) {
+  const username = normalizeUsername(formData.get("username"));
+  const password = String(formData.get("password") || "");
+  const users = getUsers();
+  const user = users.find((item) => item.username === username);
+  if (!user || !(await verifyPassword(password, user))) throw new Error("用户名或密码不正确。");
+  if (user.isActive === false) throw new Error("该账号已停用，请联系管理员。");
+  user.lastLoginAt = new Date().toISOString();
+  saveUsers(users);
+  setCurrentUser(user);
+}
+
+function updateUserStatus(userId, isActive) {
+  const current = getCurrentUser();
+  const users = getUsers();
+  const user = users.find((item) => item.id === userId);
+  if (!user) return;
+  if (current?.id === user.id && isActive === false) {
+    userManagementMessage.textContent = "管理员不能停用自己当前登录的账号。";
+    userManagementMessage.classList.add("error-note");
+    return;
+  }
+  user.isActive = isActive;
+  saveUsers(users);
+  renderUserManagementPanel();
+}
+
 function normalizeTeacherAlias(value) {
   const trimmed = String(value || "").trim();
   return trimmed || "未设置";
 }
 
 function getCurrentTeacher() {
+  const user = getCurrentUser();
+  if (user) return normalizeTeacherAlias(user.displayName);
   return normalizeTeacherAlias(localStorage.getItem(currentTeacherKey));
 }
 
 function saveCurrentTeacher(value) {
+  if (getCurrentUser()) {
+    renderCurrentTeacher();
+    return;
+  }
   const alias = normalizeTeacherAlias(value);
   if (alias === "未设置") localStorage.removeItem(currentTeacherKey);
   else localStorage.setItem(currentTeacherKey, alias);
@@ -96,9 +299,15 @@ function saveCurrentTeacher(value) {
 }
 
 function renderCurrentTeacher() {
+  const user = getCurrentUser();
   const alias = getCurrentTeacher();
   currentTeacherLabel.textContent = alias;
   teacherAliasInput.value = alias === "未设置" ? "" : alias;
+  teacherAliasInput.disabled = Boolean(user);
+  saveTeacherButton.disabled = Boolean(user);
+  document.querySelector(".teacher-identity-hint").textContent = user
+    ? "登录状态下，教师身份由账号显示名称自动确定。本机演示账号不等同于正式云端账号。"
+    : "教师身份仅用于本浏览器中的使用统计，建议填写教师代号或昵称。请勿填写身份证号、手机号等敏感信息。";
 }
 
 function sanitizeText(value) {
@@ -131,6 +340,7 @@ function hasOrganizationProfile(profile = getOrganizationProfile()) {
 }
 
 function saveOrganizationProfile() {
+  if (!canEditOrganizationProfile()) return;
   const formData = new FormData(organizationForm);
   const profile = {
     organizationName: sanitizeText(formData.get("organizationName")),
@@ -146,6 +356,7 @@ function saveOrganizationProfile() {
 }
 
 function clearOrganizationProfile() {
+  if (!canEditOrganizationProfile()) return;
   localStorage.removeItem(organizationProfileKey);
   renderOrganizationProfile();
   applyOrganizationProfileToUI();
@@ -162,6 +373,7 @@ function renderOrganizationProfile() {
 
 function applyOrganizationProfileToUI() {
   const profile = getOrganizationProfile();
+  const editable = canEditOrganizationProfile();
   const organizationName = profile.organizationName || "未设置机构信息";
   currentOrganizationLabel.textContent = organizationName;
   overviewOrganizationName.textContent = organizationName;
@@ -170,6 +382,9 @@ function applyOrganizationProfileToUI() {
   overviewTeacherAlias.textContent = getCurrentTeacher();
   overviewTotalCount.textContent = getUsageRecords().length;
   renderOrganizationProfile();
+  for (const element of organizationForm.elements) element.disabled = !editable;
+  saveOrganizationButton.classList.toggle("is-hidden", !editable);
+  clearOrganizationButton.classList.toggle("is-hidden", !editable);
   renderReportMeta();
 }
 
@@ -192,6 +407,76 @@ function renderReportMeta(meta = lastReportMeta) {
     .join("");
 }
 
+function renderCurrentUserInfo() {
+  const user = getCurrentUser();
+  currentUserBadge.textContent = `当前登录：${user ? user.displayName : "未登录"}`;
+  currentRoleBadge.textContent = `角色：${user ? getRoleLabel(user.role) : "未登录"}`;
+  logoutButton.textContent = user ? "退出账号" : "退出登录";
+  renderCurrentTeacher();
+  applyOrganizationProfileToUI();
+  validateForm();
+}
+
+function renderLoginPanel() {
+  const hasUsers = getUsers().length > 0;
+  const user = getCurrentUser();
+  accountPanel.classList.toggle("is-hidden", Boolean(user));
+  initialAdminForm.classList.toggle("is-hidden", hasUsers || Boolean(user));
+  userLoginForm.classList.toggle("is-hidden", !hasUsers || Boolean(user));
+  accountPanelTitle.textContent = user ? `已登录：${user.displayName}` : hasUsers ? "请先登录后使用心灵画卷" : "首次使用，请创建本机管理员账号";
+  accountMessage.textContent = user
+    ? "账号已登录。"
+    : "当前为本机演示账号系统，适合内部试用和功能演示。正式上线前应升级为云端认证、数据库权限和更严格的数据保护机制。";
+}
+
+function renderPermissionUI() {
+  const user = getCurrentUser();
+  const admin = isAdmin(user);
+  userManagementPanel.classList.toggle("is-hidden", !admin);
+  teacherFilterSelect.disabled = !admin;
+  clearStatsButton.classList.toggle("is-hidden", !admin);
+  clearCurrentTeacherStatsButton.classList.toggle("is-hidden", !admin);
+  renderUserManagementPanel();
+}
+
+function renderUserManagementPanel() {
+  if (!canManageUsers()) return;
+  const current = getCurrentUser();
+  const users = getUsers();
+  userManagementMessage.textContent = "";
+  userManagementMessage.classList.remove("error-note");
+  userListBody.innerHTML = "";
+  if (!users.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 6;
+    cell.textContent = "暂无用户";
+    row.appendChild(cell);
+    userListBody.appendChild(row);
+    return;
+  }
+
+  for (const user of users) {
+    const row = document.createElement("tr");
+    const values = [user.username, user.displayName, getRoleLabel(user.role), user.isActive === false ? "停用" : "启用", user.createdAt ? formatRecordTime(user.createdAt) : "未知"];
+    for (const value of values) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.appendChild(cell);
+    }
+    const actionCell = document.createElement("td");
+    const button = document.createElement("button");
+    button.className = "ghost-button table-button";
+    button.type = "button";
+    button.textContent = user.isActive === false ? "启用" : "停用";
+    button.disabled = current?.id === user.id;
+    button.addEventListener("click", () => updateUserStatus(user.id, user.isActive === false));
+    actionCell.appendChild(button);
+    row.appendChild(actionCell);
+    userListBody.appendChild(row);
+  }
+}
+
 function getCurrentConfig() {
   return contentConfig[contentTypeSelect.value] || contentConfig["心灵对话"];
 }
@@ -203,20 +488,43 @@ function updateGenerateLabels() {
   if (!reportCard.classList.contains("is-hidden")) reportTitle.textContent = config.title;
 }
 
-function showApp() {
+function showPublicHome() {
+  publicHomeView.classList.remove("is-hidden");
+  loginScreen.classList.add("is-hidden");
+  appShell.classList.add("is-hidden");
+}
+
+function showInternalEntry() {
+  publicHomeView.classList.add("is-hidden");
+  if (sessionStorage.getItem(accessStateKey) === "true" && sessionStorage.getItem(accessCodeKey)) {
+    showInternalApp();
+  } else {
+    loginScreen.classList.remove("is-hidden");
+    appShell.classList.add("is-hidden");
+  }
+}
+
+function showInternalApp() {
+  publicHomeView.classList.add("is-hidden");
   loginScreen.classList.add("is-hidden");
   appShell.classList.remove("is-hidden");
+  renderCurrentUserInfo();
+  renderLoginPanel();
   showAnalysisView();
 }
 
+function showApp() {
+  showInternalApp();
+}
+
 function showLogin() {
+  publicHomeView.classList.add("is-hidden");
   appShell.classList.add("is-hidden");
   loginScreen.classList.remove("is-hidden");
 }
 
 function restoreAccess() {
-  if (sessionStorage.getItem(accessStateKey) === "true" && sessionStorage.getItem(accessCodeKey)) showApp();
-  else showLogin();
+  showPublicHome();
 }
 
 loginForm.addEventListener("submit", async (event) => {
@@ -249,6 +557,11 @@ loginForm.addEventListener("submit", async (event) => {
 });
 
 logoutButton.addEventListener("click", () => {
+  if (getCurrentUser()) {
+    logoutUser();
+    setStatus("请先登录后生成报告。", true);
+    return;
+  }
   sessionStorage.removeItem(accessStateKey);
   sessionStorage.removeItem(accessCodeKey);
   loginForm.reset();
@@ -262,14 +575,52 @@ function showAnalysisView() {
 }
 
 function showDashboardView() {
+  if (!requireLogin("请先登录后进入教师工作台。")) return;
   analysisView.classList.add("is-hidden");
   dashboardView.classList.remove("is-hidden");
+  renderPermissionUI();
   renderUsageStats();
 }
 
 analysisViewButton.addEventListener("click", showAnalysisView);
 backToAnalysisButton.addEventListener("click", showAnalysisView);
 dashboardViewButton.addEventListener("click", showDashboardView);
+internalEntryButtons.forEach((button) => button.addEventListener("click", showInternalEntry));
+backPublicButton.addEventListener("click", showPublicHome);
+initialAdminForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await createInitialAdmin(new FormData(initialAdminForm));
+    initialAdminForm.reset();
+    accountMessage.textContent = "管理员已创建并登录。";
+    accountMessage.classList.remove("error-note");
+  } catch (error) {
+    accountMessage.textContent = error.message || "创建管理员失败。";
+    accountMessage.classList.add("error-note");
+  }
+});
+userLoginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await loginUser(new FormData(userLoginForm));
+    userLoginForm.reset();
+    accountMessage.textContent = "登录成功。";
+    accountMessage.classList.remove("error-note");
+  } catch (error) {
+    accountMessage.textContent = error.message || "登录失败。";
+    accountMessage.classList.add("error-note");
+  }
+});
+createTeacherButton.addEventListener("click", async () => {
+  try {
+    await createTeacherUser(new FormData(createTeacherForm));
+    userManagementMessage.textContent = "教师账号已创建。";
+    userManagementMessage.classList.remove("error-note");
+  } catch (error) {
+    userManagementMessage.textContent = error.message || "创建教师账号失败。";
+    userManagementMessage.classList.add("error-note");
+  }
+});
 saveTeacherButton.addEventListener("click", () => saveCurrentTeacher(teacherAliasInput.value));
 teacherAliasInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") saveCurrentTeacher(teacherAliasInput.value);
@@ -287,6 +638,7 @@ function setStatus(message, isError = false) {
 }
 
 function validateForm() {
+  // 按钮只根据资料是否完整启用；是否登录在点击时提示，避免用户看不到原因。
   const ready = Boolean(selectedFile) && profileForm.checkValidity() && !isSubmitting;
   analyzeButton.disabled = !ready;
   return ready;
@@ -413,6 +765,9 @@ function getUsageRecords() {
         contentType: normalizeContentType(record.contentType),
         isRiskRelated: record.contentType === "风险提示与转介建议" || record.isRiskRelated === true,
         teacherAlias: normalizeTeacherAlias(record.teacherAlias),
+        userId: String(record.userId || ""),
+        username: String(record.username || ""),
+        userRole: String(record.userRole || ""),
       }));
   } catch {
     return [];
@@ -421,6 +776,7 @@ function getUsageRecords() {
 
 function saveUsageRecord(contentType) {
   const safeType = normalizeContentType(contentType);
+  const user = getCurrentUser();
   const records = getUsageRecords();
   records.push({
     id: createUsageId(),
@@ -428,6 +784,9 @@ function saveUsageRecord(contentType) {
     contentType: safeType,
     isRiskRelated: safeType === "风险提示与转介建议",
     teacherAlias: getCurrentTeacher(),
+    userId: user?.id || "",
+    username: user?.username || "",
+    userRole: user?.role || "",
   });
   try {
     localStorage.setItem(usageRecordsKey, JSON.stringify(records));
@@ -447,8 +806,16 @@ function filterUsageRecordsByTeacher(records, teacherAlias) {
   return records.filter((record) => normalizeTeacherAlias(record.teacherAlias) === teacherAlias);
 }
 
+function filterRecordsByCurrentUser(records) {
+  const user = getCurrentUser();
+  if (!user) return [];
+  if (isAdmin(user)) return records;
+  return records.filter((record) => record.userId === user.id || (!record.userId && normalizeTeacherAlias(record.teacherAlias) === normalizeTeacherAlias(user.displayName)));
+}
+
 function getUsageStats(teacherAlias = "全部教师") {
-  const records = filterUsageRecordsByTeacher(getUsageRecords(), teacherAlias);
+  const visibleRecords = filterRecordsByCurrentUser(getUsageRecords());
+  const records = isAdmin() ? filterUsageRecordsByTeacher(visibleRecords, teacherAlias) : visibleRecords;
   const byType = Object.fromEntries(contentTypes.map((type) => [type, 0]));
   for (const record of records) {
     byType[record.contentType] = (byType[record.contentType] || 0) + 1;
@@ -472,7 +839,7 @@ function formatRecordTime(isoTime) {
 function renderUsageStats() {
   applyOrganizationProfileToUI();
   const previousFilter = getSelectedTeacherFilter();
-  const teacherOptions = getTeacherOptions();
+  const teacherOptions = isAdmin() ? getTeacherOptions(filterRecordsByCurrentUser(getUsageRecords())) : [getCurrentTeacher()];
   teacherFilterSelect.innerHTML = "";
   for (const optionValue of teacherOptions) {
     const option = document.createElement("option");
@@ -480,7 +847,7 @@ function renderUsageStats() {
     option.textContent = optionValue;
     teacherFilterSelect.appendChild(option);
   }
-  teacherFilterSelect.value = teacherOptions.includes(previousFilter) ? previousFilter : "全部教师";
+  teacherFilterSelect.value = isAdmin() && teacherOptions.includes(previousFilter) ? previousFilter : teacherOptions[0];
 
   const stats = getUsageStats(getSelectedTeacherFilter());
   todayCount.textContent = stats.todayTotal;
@@ -532,7 +899,8 @@ function clearUsageRecords() {
 
 function exportUsageRecords() {
   const teacherFilter = getSelectedTeacherFilter();
-  const records = filterUsageRecordsByTeacher(getUsageRecords(), teacherFilter);
+  const visibleRecords = filterRecordsByCurrentUser(getUsageRecords());
+  const records = isAdmin() ? filterUsageRecordsByTeacher(visibleRecords, teacherFilter) : visibleRecords;
   const payload = {
     exportedAt: new Date().toISOString(),
     teacherFilter,
@@ -781,6 +1149,7 @@ function setSubmitting(submitting) {
 
 analyzeButton.addEventListener("click", async () => {
   if (isSubmitting) return;
+  if (!requireLogin("请先登录后生成报告。")) return;
 
   const fileError = validateFile(selectedFile);
   if (fileError) {
@@ -872,11 +1241,13 @@ refreshStatsButton.addEventListener("click", renderUsageStats);
 teacherFilterSelect.addEventListener("change", renderUsageStats);
 exportStatsButton.addEventListener("click", exportUsageRecords);
 clearStatsButton.addEventListener("click", () => {
+  if (!isAdmin()) return;
   if (confirm("确定要清空本浏览器中的所有使用统计吗？此操作不会删除学生资料或报告正文，因为系统本来就没有保存这些内容；但统计次数将无法恢复。")) {
     clearUsageRecords();
   }
 });
 clearCurrentTeacherStatsButton.addEventListener("click", () => {
+  if (!isAdmin()) return;
   const teacherFilter = getSelectedTeacherFilter();
   if (teacherFilter === "全部教师") {
     alert("请先在教师筛选中选择某一位教师，再清空该教师统计。");
@@ -910,6 +1281,8 @@ function resetWorkspace() {
 }
 
 updateGenerateLabels();
+renderCurrentUserInfo();
+renderLoginPanel();
 renderCurrentTeacher();
 applyOrganizationProfileToUI();
 restoreAccess();
