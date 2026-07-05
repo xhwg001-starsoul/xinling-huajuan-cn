@@ -458,6 +458,13 @@ textarea:focus {
   gap: 10px;
 }
 
+.export-hint {
+  margin: 0;
+  color: rgba(56, 52, 46, 0.56);
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
 .report-meta {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

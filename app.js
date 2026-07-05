@@ -34,6 +34,8 @@ const reportMetaTeacher = document.querySelector("#reportMetaTeacher");
 const reportMetaCreatedAt = document.querySelector("#reportMetaCreatedAt");
 const copyReportButton = document.querySelector("#copyReportButton");
 const printReportButton = document.querySelector("#printReportButton");
+const exportWordButton = document.querySelector("#exportWordButton");
+const exportTxtButton = document.querySelector("#exportTxtButton");
 const resetButton = document.querySelector("#resetButton");
 const contentTypeSelect = document.querySelector("#contentType");
 const todayCount = document.querySelector("#todayCount");
@@ -607,6 +609,161 @@ function renderReport(payload) {
   reportContent.innerHTML = markdownToHtml(markdown || `# ${title}\n\n报告暂未生成内容，请稍后再试。`);
 }
 
+function getCurrentReportMeta() {
+  return lastReportMeta
+    ? {
+        contentType: lastReportMeta.contentType,
+        createdAt: lastReportMeta.createdAt,
+        createdAtText: formatRecordTime(lastReportMeta.createdAt),
+      }
+    : null;
+}
+
+function markdownToPlainText(markdown) {
+  return String(markdown || "")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "- ")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function buildReportExportData() {
+  if (!lastReportText || !lastReportMeta) return null;
+  const organization = getOrganizationProfile();
+  const meta = getCurrentReportMeta();
+  // 导出只读取当前页面中的报告，不写入 localStorage，避免保存敏感报告正文。
+  return {
+    title: "心灵画卷 · 绘画心理观察辅助报告",
+    organizationName: organization.organizationName,
+    organizationType: organization.organizationType,
+    usageScenario: organization.usageScenario,
+    reportSignature: organization.reportSignature,
+    teacherAlias: getCurrentTeacher(),
+    contentType: meta.contentType,
+    createdAtText: meta.createdAtText,
+    purpose: "绘画表达观察与学校心理辅导参考",
+    disclaimer: "本内容仅供绘画表达观察、访谈准备和学校心理辅导参考，不构成心理诊断。如发现自伤、自杀、严重暴力、长期失眠、明显拒学等风险线索，应及时启动人工评估、联系监护人并寻求专业资源支持。",
+    bodyMarkdown: lastReportText,
+    bodyText: markdownToPlainText(lastReportText),
+    signature: organization.reportSignature || "心灵画卷",
+  };
+}
+
+function buildPlainTextReport(data) {
+  const lines = [
+    data.title,
+    "",
+    "基本信息：",
+  ];
+  if (data.organizationName) lines.push(`机构名称：${data.organizationName}`);
+  if (data.organizationType) lines.push(`机构类型：${data.organizationType}`);
+  if (data.usageScenario) lines.push(`使用场景：${data.usageScenario}`);
+  if (data.reportSignature) lines.push(`报告署名：${data.reportSignature}`);
+  lines.push(`当前教师：${data.teacherAlias}`);
+  lines.push(`生成类型：${data.contentType}`);
+  lines.push(`生成时间：${data.createdAtText}`);
+  lines.push(`报告用途：${data.purpose}`);
+  lines.push("");
+  lines.push("免责声明：");
+  lines.push(data.disclaimer);
+  lines.push("");
+  lines.push("报告正文：");
+  lines.push(data.bodyText);
+  lines.push("");
+  lines.push(`—— ${data.signature}`);
+  return lines.join("\n");
+}
+
+function buildWordHtmlReport(data) {
+  // 使用 Word 可打开的 HTML .doc 方案，避免引入额外复杂依赖。
+  const infoRows = [];
+  if (data.organizationName) infoRows.push(["机构名称", data.organizationName]);
+  if (data.organizationType) infoRows.push(["机构类型", data.organizationType]);
+  if (data.usageScenario) infoRows.push(["使用场景", data.usageScenario]);
+  if (data.reportSignature) infoRows.push(["报告署名", data.reportSignature]);
+  infoRows.push(["当前教师", data.teacherAlias]);
+  infoRows.push(["生成类型", data.contentType]);
+  infoRows.push(["生成时间", data.createdAtText]);
+  infoRows.push(["报告用途", data.purpose]);
+
+  const infoHtml = infoRows
+    .map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`)
+    .join("");
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(data.title)}</title>
+  <style>
+    body { font-family: "Microsoft YaHei", Arial, sans-serif; color: #333; line-height: 1.75; }
+    h1 { color: #5f4d34; font-size: 24px; }
+    h2 { color: #6a5439; font-size: 18px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { width: 150px; background: #f5efe3; }
+    .disclaimer { margin: 18px 0; padding: 12px; background: #fbf7ef; border: 1px solid #e5d8c7; }
+    .signature { margin-top: 28px; text-align: right; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(data.title)}</h1>
+  <h2>基本信息</h2>
+  <table>${infoHtml}</table>
+  <h2>免责声明</h2>
+  <div class="disclaimer">${escapeHtml(data.disclaimer)}</div>
+  <h2>报告正文</h2>
+  <div>${markdownToHtml(data.bodyMarkdown)}</div>
+  <p class="signature">—— ${escapeHtml(data.signature)}</p>
+</body>
+</html>`;
+}
+
+function sanitizeFileName(value) {
+  return String(value || "")
+    .replace(/[\\/:*?"<>|]/g, "")
+    .replace(/\s+/g, "_")
+    .slice(0, 80);
+}
+
+function downloadBlobFile(content, fileName, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportDateStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function downloadTextFile() {
+  const data = buildReportExportData();
+  if (!data) {
+    alert("请先生成报告，再导出。");
+    return;
+  }
+  const fileName = `${sanitizeFileName(`心灵画卷_${data.contentType}_${exportDateStamp()}`)}.txt`;
+  downloadBlobFile(buildPlainTextReport(data), fileName, "text/plain;charset=utf-8");
+}
+
+function downloadWordFile() {
+  const data = buildReportExportData();
+  if (!data) {
+    alert("请先生成报告，再导出。");
+    return;
+  }
+  const fileName = `${sanitizeFileName(`心灵画卷_${data.contentType}_${exportDateStamp()}`)}.doc`;
+  downloadBlobFile(buildWordHtmlReport(data), fileName, "application/msword;charset=utf-8");
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -700,6 +857,8 @@ copyReportButton.addEventListener("click", async () => {
 });
 
 printReportButton.addEventListener("click", () => window.print());
+exportTxtButton.addEventListener("click", downloadTextFile);
+exportWordButton.addEventListener("click", downloadWordFile);
 
 resetButton.addEventListener("click", () => {
   reportCard.classList.add("is-hidden");
