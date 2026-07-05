@@ -9,8 +9,12 @@ const backToAnalysisButton = document.querySelector("#backToAnalysisButton");
 const analysisView = document.querySelector("#analysisView");
 const dashboardView = document.querySelector("#dashboardView");
 const currentTeacherLabel = document.querySelector("#currentTeacherLabel");
+const currentOrganizationLabel = document.querySelector("#currentOrganizationLabel");
 const teacherAliasInput = document.querySelector("#teacherAliasInput");
 const saveTeacherButton = document.querySelector("#saveTeacherButton");
+const organizationForm = document.querySelector("#organizationForm");
+const saveOrganizationButton = document.querySelector("#saveOrganizationButton");
+const clearOrganizationButton = document.querySelector("#clearOrganizationButton");
 const artworkInput = document.querySelector("#artworkInput");
 const dropZone = document.querySelector("#dropZone");
 const previewWrap = document.querySelector("#previewWrap");
@@ -24,6 +28,10 @@ const loadingCard = document.querySelector("#loadingCard");
 const reportCard = document.querySelector("#reportCard");
 const reportContent = document.querySelector("#reportContent");
 const reportTitle = document.querySelector("#reportTitle");
+const reportMeta = document.querySelector("#reportMeta");
+const reportMetaContentType = document.querySelector("#reportMetaContentType");
+const reportMetaTeacher = document.querySelector("#reportMetaTeacher");
+const reportMetaCreatedAt = document.querySelector("#reportMetaCreatedAt");
 const copyReportButton = document.querySelector("#copyReportButton");
 const printReportButton = document.querySelector("#printReportButton");
 const resetButton = document.querySelector("#resetButton");
@@ -38,15 +46,22 @@ const refreshStatsButton = document.querySelector("#refreshStatsButton");
 const exportStatsButton = document.querySelector("#exportStatsButton");
 const clearStatsButton = document.querySelector("#clearStatsButton");
 const clearCurrentTeacherStatsButton = document.querySelector("#clearCurrentTeacherStatsButton");
+const overviewOrganizationName = document.querySelector("#overviewOrganizationName");
+const overviewOrganizationType = document.querySelector("#overviewOrganizationType");
+const overviewUsageScenario = document.querySelector("#overviewUsageScenario");
+const overviewTeacherAlias = document.querySelector("#overviewTeacherAlias");
+const overviewTotalCount = document.querySelector("#overviewTotalCount");
 
 const accessStateKey = "xinling_access_ok";
 const accessCodeKey = "xinling_access_code";
 const usageRecordsKey = "soul_painting_usage_records";
 const currentTeacherKey = "soul_painting_current_teacher";
+const organizationProfileKey = "soul_painting_organization_profile";
 const maxImageSize = 5 * 1024 * 1024;
 let selectedFile = null;
 let selectedDataUrl = "";
 let lastReportText = "";
+let lastReportMeta = null;
 let isSubmitting = false;
 
 const contentConfig = {
@@ -74,6 +89,7 @@ function saveCurrentTeacher(value) {
   if (alias === "未设置") localStorage.removeItem(currentTeacherKey);
   else localStorage.setItem(currentTeacherKey, alias);
   renderCurrentTeacher();
+  applyOrganizationProfileToUI();
   renderUsageStats();
 }
 
@@ -81,6 +97,97 @@ function renderCurrentTeacher() {
   const alias = getCurrentTeacher();
   currentTeacherLabel.textContent = alias;
   teacherAliasInput.value = alias === "未设置" ? "" : alias;
+}
+
+function sanitizeText(value) {
+  return String(value || "").trim().slice(0, 120);
+}
+
+function getOrganizationProfile() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(organizationProfileKey) || "{}");
+    return {
+      organizationName: sanitizeText(saved.organizationName),
+      organizationType: sanitizeText(saved.organizationType),
+      usageScenario: sanitizeText(saved.usageScenario),
+      reportSignature: sanitizeText(saved.reportSignature),
+      organizationNote: sanitizeText(saved.organizationNote),
+    };
+  } catch {
+    return {
+      organizationName: "",
+      organizationType: "",
+      usageScenario: "",
+      reportSignature: "",
+      organizationNote: "",
+    };
+  }
+}
+
+function hasOrganizationProfile(profile = getOrganizationProfile()) {
+  return Boolean(profile.organizationName || profile.organizationType || profile.usageScenario || profile.reportSignature || profile.organizationNote);
+}
+
+function saveOrganizationProfile() {
+  const formData = new FormData(organizationForm);
+  const profile = {
+    organizationName: sanitizeText(formData.get("organizationName")),
+    organizationType: sanitizeText(formData.get("organizationType")),
+    usageScenario: sanitizeText(formData.get("usageScenario")),
+    reportSignature: sanitizeText(formData.get("reportSignature")),
+    organizationNote: sanitizeText(formData.get("organizationNote")),
+  };
+
+  if (hasOrganizationProfile(profile)) localStorage.setItem(organizationProfileKey, JSON.stringify(profile));
+  else localStorage.removeItem(organizationProfileKey);
+  applyOrganizationProfileToUI();
+}
+
+function clearOrganizationProfile() {
+  localStorage.removeItem(organizationProfileKey);
+  renderOrganizationProfile();
+  applyOrganizationProfileToUI();
+}
+
+function renderOrganizationProfile() {
+  const profile = getOrganizationProfile();
+  organizationForm.organizationName.value = profile.organizationName;
+  organizationForm.organizationType.value = profile.organizationType;
+  organizationForm.usageScenario.value = profile.usageScenario;
+  organizationForm.reportSignature.value = profile.reportSignature;
+  organizationForm.organizationNote.value = profile.organizationNote;
+}
+
+function applyOrganizationProfileToUI() {
+  const profile = getOrganizationProfile();
+  const organizationName = profile.organizationName || "未设置机构信息";
+  currentOrganizationLabel.textContent = organizationName;
+  overviewOrganizationName.textContent = organizationName;
+  overviewOrganizationType.textContent = profile.organizationType || "未设置";
+  overviewUsageScenario.textContent = profile.usageScenario || "未设置";
+  overviewTeacherAlias.textContent = getCurrentTeacher();
+  overviewTotalCount.textContent = getUsageRecords().length;
+  renderOrganizationProfile();
+  renderReportMeta();
+}
+
+function renderReportMeta(meta = lastReportMeta) {
+  const organization = getOrganizationProfile();
+  const contentType = meta?.contentType || getCurrentConfig().title || "未生成";
+  const createdAt = meta?.createdAt ? formatRecordTime(meta.createdAt) : "未生成";
+  const rows = [];
+
+  if (organization.organizationName) {
+    rows.push(["机构名称", organization.organizationName]);
+  }
+  rows.push(["报告用途", "绘画表达观察与学校心理辅导参考"]);
+  rows.push(["生成类型", contentType]);
+  rows.push(["当前教师", getCurrentTeacher()]);
+  rows.push(["生成时间", createdAt]);
+
+  reportMeta.innerHTML = rows
+    .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`)
+    .join("");
 }
 
 function getCurrentConfig() {
@@ -164,6 +271,12 @@ dashboardViewButton.addEventListener("click", showDashboardView);
 saveTeacherButton.addEventListener("click", () => saveCurrentTeacher(teacherAliasInput.value));
 teacherAliasInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") saveCurrentTeacher(teacherAliasInput.value);
+});
+saveOrganizationButton.addEventListener("click", saveOrganizationProfile);
+clearOrganizationButton.addEventListener("click", () => {
+  if (confirm("确定要清空本浏览器中的机构信息吗？这不会影响教师身份和使用统计记录。")) {
+    clearOrganizationProfile();
+  }
 });
 
 function setStatus(message, isError = false) {
@@ -355,6 +468,7 @@ function formatRecordTime(isoTime) {
 }
 
 function renderUsageStats() {
+  applyOrganizationProfileToUI();
   const previousFilter = getSelectedTeacherFilter();
   const teacherOptions = getTeacherOptions();
   teacherFilterSelect.innerHTML = "";
@@ -485,6 +599,11 @@ function renderReport(payload) {
   const title = payload?.documentTitle || config.title;
   reportTitle.textContent = title;
   lastReportText = markdown || title;
+  lastReportMeta = {
+    contentType: contentTypeSelect.value,
+    createdAt: new Date().toISOString(),
+  };
+  renderReportMeta();
   reportContent.innerHTML = markdownToHtml(markdown || `# ${title}\n\n报告暂未生成内容，请稍后再试。`);
 }
 
@@ -616,6 +735,7 @@ function resetWorkspace() {
   selectedFile = null;
   selectedDataUrl = "";
   lastReportText = "";
+  lastReportMeta = null;
   previewImage.removeAttribute("src");
   reportImage.removeAttribute("src");
   previewWrap.classList.add("is-hidden");
@@ -625,10 +745,12 @@ function resetWorkspace() {
   isSubmitting = false;
   analyzeButton.disabled = true;
   reportTitle.textContent = "房树人绘画心理观察辅助报告";
+  renderReportMeta();
   updateGenerateLabels();
   setStatus("请先上传图画，并补充必填记录信息。");
 }
 
 updateGenerateLabels();
 renderCurrentTeacher();
+applyOrganizationProfileToUI();
 restoreAccess();

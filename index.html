@@ -43,6 +43,7 @@
           <div>
             <p class="section-kicker">本机教师身份</p>
             <h2>当前教师：<span id="currentTeacherLabel">未设置</span></h2>
+            <p class="context-line">当前机构：<span id="currentOrganizationLabel">未设置机构信息</span></p>
             <p class="teacher-identity-hint">教师身份仅用于本浏览器中的使用统计，建议填写教师代号或昵称。请勿填写身份证号、手机号等敏感信息。</p>
           </div>
           <div class="teacher-identity-form">
@@ -205,6 +206,12 @@
                   <h2 id="reportTitle">房树人绘画心理观察辅助报告</h2>
                 </div>
               </div>
+              <dl class="report-meta" id="reportMeta">
+                <div><dt>报告用途</dt><dd>绘画表达观察与学校心理辅导参考</dd></div>
+                <div><dt>生成类型</dt><dd id="reportMetaContentType">未生成</dd></div>
+                <div><dt>当前教师</dt><dd id="reportMetaTeacher">未设置</dd></div>
+                <div><dt>生成时间</dt><dd id="reportMetaCreatedAt">未生成</dd></div>
+              </dl>
               <div class="report-actions">
                 <button class="ghost-button" id="copyReportButton" type="button">复制报告</button>
                 <button class="ghost-button" id="printReportButton" type="button">打印报告</button>
@@ -226,6 +233,71 @@
               <h2 id="dashboardTitle">心灵画卷 · 房树人绘画心理分析教师工作台</h2>
             </div>
             <button class="ghost-button" id="backToAnalysisButton" type="button">返回分析页面</button>
+          </section>
+
+          <section class="dashboard-panel">
+            <div class="panel-head">
+              <p class="section-kicker">机构配置</p>
+              <h2>机构信息设置</h2>
+            </div>
+            <form class="organization-form" id="organizationForm">
+              <div class="field">
+                <label for="organizationName">机构名称</label>
+                <input id="organizationName" name="organizationName" placeholder="例如 平舆县某某中学心理辅导室" />
+              </div>
+              <div class="field">
+                <label for="organizationType">机构类型</label>
+                <select id="organizationType" name="organizationType">
+                  <option value="">请选择</option>
+                  <option>学校</option>
+                  <option>心理咨询机构</option>
+                  <option>社工/社区服务机构</option>
+                  <option>教育培训机构</option>
+                  <option>其他</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="usageScenario">使用场景</label>
+                <select id="usageScenario" name="usageScenario">
+                  <option value="">请选择</option>
+                  <option>学校心理辅导</option>
+                  <option>班主任访谈准备</option>
+                  <option>家校沟通支持</option>
+                  <option>心理咨询辅助</option>
+                  <option>社区青少年服务</option>
+                  <option>其他</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="reportSignature">报告署名</label>
+                <input id="reportSignature" name="reportSignature" placeholder="例如 心理辅导室" />
+              </div>
+              <div class="field field-wide">
+                <label for="organizationNote">机构备注（可选）</label>
+                <textarea id="organizationNote" name="organizationNote" rows="2" placeholder="例如 本系统仅供校内心理辅导参考"></textarea>
+              </div>
+            </form>
+            <div class="dashboard-actions">
+              <button class="ghost-button" id="saveOrganizationButton" type="button">保存机构信息</button>
+              <button class="ghost-button danger-button" id="clearOrganizationButton" type="button">清空机构信息</button>
+            </div>
+            <p class="dashboard-note">
+              机构信息仅用于本浏览器中的页面显示、报告抬头和本机工作台配置，不代表真实机构认证。请勿填写统一社会信用代码、详细地址、负责人身份证号、手机号等敏感信息。
+            </p>
+          </section>
+
+          <section class="dashboard-panel">
+            <div class="panel-head">
+              <p class="section-kicker">当前配置</p>
+              <h2>当前配置概览</h2>
+            </div>
+            <div class="overview-grid">
+              <div><span>当前机构</span><strong id="overviewOrganizationName">未设置机构信息</strong></div>
+              <div><span>当前机构类型</span><strong id="overviewOrganizationType">未设置</strong></div>
+              <div><span>当前使用场景</span><strong id="overviewUsageScenario">未设置</strong></div>
+              <div><span>当前教师</span><strong id="overviewTeacherAlias">未设置</strong></div>
+              <div><span>本机累计生成次数</span><strong id="overviewTotalCount">0</strong></div>
+            </div>
           </section>
 
           <section class="dashboard-grid" aria-label="使用统计概览">

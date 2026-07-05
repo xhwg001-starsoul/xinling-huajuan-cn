@@ -169,6 +169,13 @@ h2 {
   font-size: clamp(1.25rem, 2vw, 1.7rem);
 }
 
+.context-line {
+  margin: 10px 0 0;
+  color: #5b5249;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
 .teacher-identity-hint {
   margin: 10px 0 0;
   color: var(--muted);
@@ -451,6 +458,34 @@ textarea:focus {
   gap: 10px;
 }
 
+.report-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid rgba(104, 88, 63, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 252, 245, 0.68);
+}
+
+.report-meta div {
+  display: grid;
+  gap: 4px;
+}
+
+.report-meta dt {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.report-meta dd {
+  margin: 0;
+  color: #514433;
+  line-height: 1.5;
+}
+
 .dashboard-view {
   display: grid;
   gap: 24px;
@@ -493,8 +528,42 @@ textarea:focus {
   padding: 24px;
 }
 
+.organization-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
 .dashboard-filter {
   max-width: 460px;
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.overview-grid div {
+  padding: 14px;
+  border: 1px solid rgba(104, 88, 63, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 252, 245, 0.66);
+}
+
+.overview-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.overview-grid strong {
+  display: block;
+  margin-top: 8px;
+  color: #514433;
+  line-height: 1.45;
 }
 
 .type-list {
@@ -656,6 +725,12 @@ textarea:focus {
   }
 
   .teacher-form {
+    grid-template-columns: 1fr;
+  }
+
+  .organization-form,
+  .overview-grid,
+  .report-meta {
     grid-template-columns: 1fr;
   }
 
