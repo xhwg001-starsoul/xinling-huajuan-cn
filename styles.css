@@ -950,6 +950,14 @@ textarea:focus {
   border-top: 1px solid rgba(104, 88, 63, 0.12);
 }
 
+.cn-project-badge {
+  margin: 28px 0 0;
+  text-align: center;
+  color: rgba(86, 76, 62, 0.56);
+  font-size: 0.86rem;
+  letter-spacing: 0;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     width: min(100% - 24px, 720px);
