@@ -1,27 +1,18 @@
-function sendJson(res, statusCode, payload) {
-  res.statusCode = statusCode;
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.end(JSON.stringify(payload));
-}
+const { readJsonBody, sendJson } = require("./_supabase");
 
 async function handler(req, res) {
-  if (req.method !== "POST") {
-    return sendJson(res, 405, { error: "只支持 POST 请求。" });
-  }
-
-  if (!process.env.ACCESS_CODE) {
-    return sendJson(res, 500, { error: "服务器尚未配置 ACCESS_CODE，请联系管理员。" });
-  }
+  if (req.method !== "POST") return sendJson(res, 405, { error: "method_not_allowed" });
+  if (!process.env.ACCESS_CODE) return sendJson(res, 500, { error: "missing_access_code_config" });
 
   let body = {};
   try {
-    body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
+    body = await readJsonBody(req);
   } catch {
-    return sendJson(res, 400, { error: "请求内容格式不正确，请重新提交。" });
+    return sendJson(res, 400, { error: "bad_json" });
   }
 
   if (String(body.accessCode || "") !== String(process.env.ACCESS_CODE)) {
-    return sendJson(res, 401, { error: "访问码不正确，请联系管理员微信 xinghaiweiguang" });
+    return sendJson(res, 401, { error: "invalid_access_code" });
   }
 
   return sendJson(res, 200, { ok: true });

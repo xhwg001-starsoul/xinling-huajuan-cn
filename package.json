@@ -2,10 +2,14 @@
   "name": "xinling-huajuan-teacher",
   "version": "1.0.0",
   "private": true,
-  "description": "心灵画卷教师内部测试版",
+  "description": "Xinling Huajuan teacher internal test version",
   "scripts": {
     "start": "node local-server.js",
-    "check": "node --check app.js && node --check local-server.js && node --check model-adapters.js && node --check api/analyze.js && node --check api/verify-access.js"
+    "check": "node --check app.js && node --check local-server.js && node --check model-adapters.js && node --check api/analyze.js && node --check api/verify-access.js && node --check api/_supabase.js && node --check api/supabase-config.js && node --check api/bootstrap-admin.js && node --check api/admin-create-user.js && node --check api/admin-update-user-status.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.0",
+    "dotenv": "^17.4.2"
   },
   "engines": {
     "node": ">=20"

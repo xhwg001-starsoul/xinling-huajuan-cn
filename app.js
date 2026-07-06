@@ -1178,9 +1178,10 @@ analyzeButton.addEventListener("click", async () => {
   loadingCard.scrollIntoView({ behavior: "smooth", block: "center" });
 
   try {
+    const authToken = await getCloudAccessToken();
     const response = await fetch("/api/analyze", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Access-Code": accessCode },
+      headers: { "Content-Type": "application/json", "X-Access-Code": accessCode, Authorization: `Bearer ${authToken}` },
       body: JSON.stringify({
         accessCode,
         image: selectedDataUrl,
@@ -1192,7 +1193,7 @@ analyzeButton.addEventListener("click", async () => {
     if (!response.ok) throw new Error(data.error || "OpenAI API 调用失败，请稍后再试。");
 
     renderReport(data);
-    saveUsageRecord(teacherProfile.contentType);
+    await saveUsageRecord(teacherProfile.contentType);
     loadingCard.classList.add("is-hidden");
     reportCard.classList.remove("is-hidden");
     reportCard.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1280,9 +1281,494 @@ function resetWorkspace() {
   setStatus("请先上传图画，并补充必填记录信息。");
 }
 
-updateGenerateLabels();
-renderCurrentUserInfo();
-renderLoginPanel();
-renderCurrentTeacher();
-applyOrganizationProfileToUI();
-restoreAccess();
+let cloudSupabase = null;
+let currentCloudSession = null;
+let currentCloudProfile = null;
+let currentCloudOrganization = null;
+let cloudProfiles = [];
+let cloudUsageRecords = [];
+let cloudAuthReady = false;
+
+function usernameToInternalEmail(username) {
+  return `${normalizeUsername(username)}@xinlinghuajuan.invalid`;
+}
+
+async function initSupabaseClient() {
+  if (cloudSupabase) return cloudSupabase;
+  if (!window.supabase?.createClient) throw new Error("Supabase 客户端未加载，请检查网络或稍后重试。");
+  const response = await fetch("/api/supabase-config");
+  const config = await response.json().catch(() => ({}));
+  if (!response.ok || !config.url || !config.anonKey) throw new Error("Supabase 环境变量尚未配置完整。");
+  cloudSupabase = window.supabase.createClient(config.url, config.anonKey);
+  return cloudSupabase;
+}
+
+async function getCloudAccessToken() {
+  await initSupabaseClient();
+  const { data } = await cloudSupabase.auth.getSession();
+  currentCloudSession = data.session || null;
+  if (!currentCloudSession?.access_token) throw new Error("请先登录后生成报告。");
+
+  let { data: userData, error: userError } = await cloudSupabase.auth.getUser(currentCloudSession.access_token);
+  if (userError || !userData?.user) {
+    const refreshed = await cloudSupabase.auth.refreshSession();
+    if (refreshed.error || !refreshed.data?.session) {
+      await cloudSupabase.auth.signOut();
+      currentCloudSession = null;
+      currentCloudProfile = null;
+      renderCurrentUserInfo();
+      renderLoginPanel();
+      throw new Error("登录状态已失效，请重新登录后再操作。");
+    }
+    currentCloudSession = refreshed.data.session;
+    const checked = await cloudSupabase.auth.getUser(currentCloudSession.access_token);
+    userData = checked.data;
+    userError = checked.error;
+    if (userError || !userData?.user) {
+      await cloudSupabase.auth.signOut();
+      currentCloudSession = null;
+      currentCloudProfile = null;
+      renderCurrentUserInfo();
+      renderLoginPanel();
+      throw new Error("登录状态已失效，请重新登录后再操作。");
+    }
+  }
+
+  if (!currentCloudProfile || currentCloudProfile.id !== userData.user.id) {
+    await loadCurrentProfile();
+  }
+  return currentCloudSession.access_token;
+}
+
+function mapProfile(profile) {
+  if (!profile) return null;
+  return {
+    id: profile.id,
+    username: profile.username,
+    displayName: profile.display_name || profile.username,
+    role: profile.role,
+    isActive: profile.is_active !== false,
+    createdAt: profile.created_at || "",
+    organizationId: profile.organization_id || "",
+  };
+}
+
+async function loadCurrentProfile() {
+  if (!currentCloudSession?.user?.id) {
+    currentCloudProfile = null;
+    return null;
+  }
+  const { data, error } = await cloudSupabase.from("profiles").select("*").eq("id", currentCloudSession.user.id).single();
+  if (error || !data) {
+    currentCloudProfile = null;
+    throw new Error("账号资料不存在，请联系管理员。");
+  }
+  if (data.is_active === false) {
+    await cloudSupabase.auth.signOut();
+    currentCloudSession = null;
+    currentCloudProfile = null;
+    throw new Error("该账号已停用，请联系管理员。");
+  }
+  currentCloudProfile = mapProfile(data);
+  localStorage.setItem(currentTeacherKey, currentCloudProfile.displayName);
+  await loadOrganizationFromCloud();
+  return currentCloudProfile;
+}
+
+async function loadCurrentSession() {
+  await initSupabaseClient();
+  const { data } = await cloudSupabase.auth.getSession();
+  currentCloudSession = data.session || null;
+  if (currentCloudSession && !currentCloudProfile) await loadCurrentProfile();
+  return currentCloudSession;
+}
+
+getCurrentUser = function getCurrentCloudUser() {
+  return currentCloudProfile;
+};
+
+isAdmin = function isCloudAdmin(user = getCurrentUser()) {
+  return user?.role === "admin";
+};
+
+isTeacher = function isCloudTeacher(user = getCurrentUser()) {
+  return user?.role === "teacher";
+};
+
+requireLogin = function requireCloudLogin(message = "请先登录后使用心灵画卷。") {
+  const user = getCurrentUser();
+  if (user) return true;
+  setStatus(message, true);
+  renderLoginPanel();
+  return false;
+};
+
+setCurrentUser = function setCurrentCloudUser(profile) {
+  currentCloudProfile = profile;
+  if (profile?.displayName) localStorage.setItem(currentTeacherKey, profile.displayName);
+  renderCurrentUserInfo();
+  renderLoginPanel();
+  renderPermissionUI();
+  renderUsageStats();
+};
+
+logoutUser = async function logoutCloudUser() {
+  if (cloudSupabase) await cloudSupabase.auth.signOut();
+  currentCloudSession = null;
+  currentCloudProfile = null;
+  currentCloudOrganization = null;
+  cloudProfiles = [];
+  cloudUsageRecords = [];
+  renderCurrentUserInfo();
+  renderLoginPanel();
+  showAnalysisView();
+  renderUsageStats();
+};
+
+createInitialAdmin = async function bootstrapCloudAdmin(formData) {
+  const password = String(formData.get("password") || "");
+  const confirmPassword = String(formData.get("confirmPassword") || "");
+  if (password !== confirmPassword) throw new Error("两次密码不一致。");
+  if (!sanitizeText(formData.get("organizationName"))) throw new Error("机构名称不能为空。");
+
+  const response = await fetch("/api/bootstrap-admin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(Object.fromEntries(formData.entries())),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) throw new Error(data.error || "初始化云端管理员失败。");
+  return data;
+};
+
+loginUser = async function loginCloudUser(formData) {
+  await initSupabaseClient();
+  const username = normalizeUsername(formData.get("username"));
+  const password = String(formData.get("password") || "");
+  if (!isValidUsername(username)) throw new Error("登录账号格式不正确。");
+  await cloudSupabase.auth.signOut();
+  const { data, error } = await cloudSupabase.auth.signInWithPassword({
+    email: usernameToInternalEmail(username),
+    password,
+  });
+  if (error || !data.session) throw new Error("账号或密码不正确。");
+  currentCloudSession = data.session;
+  await loadCurrentProfile();
+  renderCurrentUserInfo();
+  renderLoginPanel();
+  renderPermissionUI();
+  await renderUsageStats();
+};
+
+createTeacherUser = async function createTeacherCloudUser(formData) {
+  if (!canManageUsers()) throw new Error("只有管理员可以创建教师账号。");
+  const password = String(formData.get("password") || "");
+  const confirmPassword = String(formData.get("confirmPassword") || "");
+  if (password !== confirmPassword) throw new Error("两次密码不一致。");
+  const token = await getCloudAccessToken();
+  const response = await fetch("/api/admin-create-user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(Object.fromEntries(formData.entries())),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) throw new Error(data.error || "创建教师账号失败。");
+  createTeacherForm.reset();
+  await fetchProfilesForAdmin();
+  renderUserManagementPanel();
+};
+
+updateUserStatus = async function updateTeacherCloudStatus(userId, isActive) {
+  const token = await getCloudAccessToken();
+  const response = await fetch("/api/admin-update-user-status", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ userId, isActive }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    userManagementMessage.textContent = data.error || "更新账号状态失败。";
+    userManagementMessage.classList.add("error-note");
+    return;
+  }
+  await fetchProfilesForAdmin();
+  renderUserManagementPanel();
+};
+
+async function fetchProfilesForAdmin() {
+  if (!isAdmin()) {
+    cloudProfiles = [];
+    return [];
+  }
+  const { data, error } = await cloudSupabase.from("profiles").select("*").order("created_at", { ascending: true });
+  if (error) throw error;
+  cloudProfiles = (data || []).map(mapProfile);
+  return cloudProfiles;
+}
+
+renderLoginPanel = function renderCloudLoginPanel() {
+  const user = getCurrentUser();
+  accountPanel.classList.toggle("is-hidden", Boolean(user));
+  initialAdminForm.classList.toggle("is-hidden", Boolean(user));
+  userLoginForm.classList.toggle("is-hidden", Boolean(user));
+  accountPanelTitle.textContent = user ? `已登录：${user.displayName}` : "请先登录云端账号后使用心灵画卷";
+  accountMessage.textContent = user
+    ? "账号已登录。"
+    : "当前为云端账号系统第一版，不开放公众注册。教师账号由机构管理员创建，请勿上传学生真实姓名、身份证号、详细住址等敏感信息。";
+};
+
+renderUserManagementPanel = async function renderCloudUserManagementPanel() {
+  if (!canManageUsers()) return;
+  userManagementMessage.textContent = "";
+  userManagementMessage.classList.remove("error-note");
+  userListBody.innerHTML = "";
+  try {
+    await fetchProfilesForAdmin();
+  } catch (error) {
+    userManagementMessage.textContent = "读取账号列表失败，请稍后重试。";
+    userManagementMessage.classList.add("error-note");
+  }
+
+  if (!cloudProfiles.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 6;
+    cell.textContent = "暂无用户";
+    row.appendChild(cell);
+    userListBody.appendChild(row);
+    return;
+  }
+
+  const current = getCurrentUser();
+  for (const user of cloudProfiles) {
+    const row = document.createElement("tr");
+    const values = [user.username, user.displayName, getRoleLabel(user.role), user.isActive === false ? "停用" : "启用", user.createdAt ? formatRecordTime(user.createdAt) : "未知"];
+    for (const value of values) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.appendChild(cell);
+    }
+    const actionCell = document.createElement("td");
+    const button = document.createElement("button");
+    button.className = "ghost-button table-button";
+    button.type = "button";
+    button.textContent = user.isActive === false ? "启用" : "停用";
+    button.disabled = current?.id === user.id || user.role === "admin";
+    button.addEventListener("click", () => updateUserStatus(user.id, user.isActive === false));
+    actionCell.appendChild(button);
+    row.appendChild(actionCell);
+    userListBody.appendChild(row);
+  }
+};
+
+function normalizeOrganizationRow(row = {}) {
+  return {
+    organizationName: sanitizeText(row.name),
+    organizationType: sanitizeText(row.organization_type),
+    usageScenario: sanitizeText(row.usage_scenario),
+    reportSignature: sanitizeText(row.report_signature),
+    organizationNote: sanitizeText(row.note),
+  };
+}
+
+async function loadOrganizationFromCloud() {
+  if (!currentCloudProfile?.organizationId) {
+    currentCloudOrganization = null;
+    return null;
+  }
+  const { data, error } = await cloudSupabase.from("organizations").select("*").eq("id", currentCloudProfile.organizationId).single();
+  if (error) throw error;
+  currentCloudOrganization = normalizeOrganizationRow(data);
+  return currentCloudOrganization;
+}
+
+getOrganizationProfile = function getCloudOrganizationProfile() {
+  return currentCloudOrganization || {
+    organizationName: "",
+    organizationType: "",
+    usageScenario: "",
+    reportSignature: "",
+    organizationNote: "",
+  };
+};
+
+saveOrganizationProfile = async function saveCloudOrganizationProfile() {
+  if (!canEditOrganizationProfile() || !currentCloudProfile?.organizationId) return;
+  const formData = new FormData(organizationForm);
+  const payload = {
+    name: sanitizeText(formData.get("organizationName")),
+    organization_type: sanitizeText(formData.get("organizationType")),
+    usage_scenario: sanitizeText(formData.get("usageScenario")),
+    report_signature: sanitizeText(formData.get("reportSignature")),
+    note: sanitizeText(formData.get("organizationNote")),
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await cloudSupabase.from("organizations").update(payload).eq("id", currentCloudProfile.organizationId);
+  if (error) {
+    alert("机构信息保存失败，请稍后重试。");
+    return;
+  }
+  await loadOrganizationFromCloud();
+  applyOrganizationProfileToUI();
+};
+
+clearOrganizationProfile = async function clearCloudOrganizationProfile() {
+  if (!canEditOrganizationProfile() || !currentCloudProfile?.organizationId) return;
+  const { error } = await cloudSupabase
+    .from("organizations")
+    .update({ name: "", organization_type: "", usage_scenario: "", report_signature: "", note: "", updated_at: new Date().toISOString() })
+    .eq("id", currentCloudProfile.organizationId);
+  if (error) {
+    alert("机构信息清空失败，请稍后重试。");
+    return;
+  }
+  await loadOrganizationFromCloud();
+  renderOrganizationProfile();
+  applyOrganizationProfileToUI();
+};
+
+getUsageRecords = function getCloudUsageRecords() {
+  return cloudUsageRecords;
+};
+
+async function fetchUsageRecordsFromCloud() {
+  if (!getCurrentUser()) {
+    cloudUsageRecords = [];
+    return cloudUsageRecords;
+  }
+  const { data, error } = await cloudSupabase.from("usage_records").select("*").order("created_at", { ascending: false }).limit(500);
+  if (error) throw error;
+  cloudUsageRecords = (data || []).map((record) => ({
+    id: String(record.id || createUsageId()),
+    createdAt: String(record.created_at || new Date().toISOString()),
+    contentType: normalizeContentType(record.content_type),
+    isRiskRelated: record.is_risk_related === true,
+    teacherAlias: normalizeTeacherAlias(record.teacher_alias),
+    userId: String(record.user_id || ""),
+    username: String(record.username || ""),
+    userRole: String(record.user_role || ""),
+  }));
+  return cloudUsageRecords;
+}
+
+saveUsageRecord = async function saveCloudUsageRecord(contentType) {
+  const user = getCurrentUser();
+  if (!user) return;
+  const safeType = normalizeContentType(contentType);
+  const { error } = await cloudSupabase.from("usage_records").insert({
+    organization_id: user.organizationId,
+    user_id: user.id,
+    username: user.username,
+    teacher_alias: user.displayName,
+    user_role: user.role,
+    content_type: safeType,
+    is_risk_related: safeType === "风险提示与转介建议",
+  });
+  if (error) {
+    setStatus("云端统计记录保存失败，请稍后检查。", true);
+    return;
+  }
+  await fetchUsageRecordsFromCloud();
+};
+
+renderUsageStats = async function renderCloudUsageStats() {
+  try {
+    await fetchUsageRecordsFromCloud();
+  } catch {
+    cloudUsageRecords = [];
+  }
+  applyOrganizationProfileToUI();
+  const previousFilter = getSelectedTeacherFilter();
+  const teacherOptions = isAdmin() ? getTeacherOptions(getUsageRecords()) : [getCurrentTeacher()];
+  teacherFilterSelect.innerHTML = "";
+  for (const optionValue of teacherOptions) {
+    const option = document.createElement("option");
+    option.value = optionValue;
+    option.textContent = optionValue;
+    teacherFilterSelect.appendChild(option);
+  }
+  teacherFilterSelect.value = isAdmin() && teacherOptions.includes(previousFilter) ? previousFilter : teacherOptions[0];
+
+  const stats = getUsageStats(getSelectedTeacherFilter());
+  todayCount.textContent = stats.todayTotal;
+  totalCount.textContent = stats.total;
+  riskCount.textContent = stats.riskTotal;
+  overviewTotalCount.textContent = stats.total;
+
+  typeStatsList.innerHTML = "";
+  for (const type of contentTypes) {
+    const row = document.createElement("div");
+    row.className = "type-row";
+    const label = document.createElement("span");
+    label.textContent = type;
+    const value = document.createElement("strong");
+    value.textContent = stats.byType[type] || 0;
+    row.append(label, value);
+    typeStatsList.appendChild(row);
+  }
+
+  recentRecordsBody.innerHTML = "";
+  if (!stats.recentRecords.length) {
+    const emptyRow = document.createElement("tr");
+    const emptyCell = document.createElement("td");
+    emptyCell.colSpan = 4;
+    emptyCell.textContent = "暂无云端统计记录";
+    emptyRow.appendChild(emptyCell);
+    recentRecordsBody.appendChild(emptyRow);
+    return;
+  }
+  for (const record of stats.recentRecords) {
+    const row = document.createElement("tr");
+    const cells = [formatRecordTime(record.createdAt), normalizeTeacherAlias(record.teacherAlias), record.contentType, record.isRiskRelated ? "是" : "否"];
+    for (const value of cells) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.appendChild(cell);
+    }
+    recentRecordsBody.appendChild(row);
+  }
+};
+
+clearUsageRecords = function clearCloudUsageRecords() {
+  alert("v0.4 云端统计清空将在后续版本通过后端接口实现。当前版本不会删除云端记录。");
+};
+
+exportUsageRecords = function exportCloudUsageRecords() {
+  const teacherFilter = getSelectedTeacherFilter();
+  const records = isAdmin() ? filterUsageRecordsByTeacher(getUsageRecords(), teacherFilter) : getUsageRecords();
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    teacherFilter,
+    note: "仅包含云端安全使用统计元数据，不包含学生资料、图片、背景资料正文或 AI 报告正文。",
+    records,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `soul-painting-cloud-usage-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
+async function initializeCloudApp() {
+  updateGenerateLabels();
+  try {
+    await initSupabaseClient();
+    await loadCurrentSession();
+    cloudAuthReady = true;
+  } catch (error) {
+    cloudAuthReady = false;
+    accountMessage.textContent = error.message || "Supabase 初始化失败，请检查环境变量。";
+    accountMessage.classList.add("error-note");
+  }
+  renderCurrentUserInfo();
+  renderLoginPanel();
+  renderCurrentTeacher();
+  applyOrganizationProfileToUI();
+  restoreAccess();
+}
+
+initializeCloudApp();

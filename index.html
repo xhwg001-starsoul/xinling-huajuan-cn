@@ -140,6 +140,10 @@
           </div>
 
           <form class="account-form is-hidden" id="initialAdminForm">
+            <div class="field">
+              <label for="adminInitCode">初始化码</label>
+              <input id="adminInitCode" name="initCode" type="password" autocomplete="one-time-code" placeholder="请输入初始化码" />
+            </div>
             <p class="form-hint">首次使用，请创建本机管理员账号。</p>
             <div class="field">
               <label for="initialAdminUsername">管理员用户名</label>
@@ -156,6 +160,41 @@
             <div class="field">
               <label for="initialAdminConfirmPassword">确认密码</label>
               <input id="initialAdminConfirmPassword" name="confirmPassword" type="password" autocomplete="new-password" />
+            </div>
+            <div class="field">
+              <label for="initialOrganizationName">机构名称</label>
+              <input id="initialOrganizationName" name="organizationName" placeholder="例如 某某学校学生成长中心" />
+            </div>
+            <div class="field">
+              <label for="initialOrganizationType">机构类型</label>
+              <select id="initialOrganizationType" name="organizationType">
+                <option value="">请选择</option>
+                <option>学校</option>
+                <option>心理咨询机构</option>
+                <option>社工/社区服务机构</option>
+                <option>教育培训机构</option>
+                <option>其他</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="initialUsageScenario">使用场景</label>
+              <select id="initialUsageScenario" name="usageScenario">
+                <option value="">请选择</option>
+                <option>学校心理辅导</option>
+                <option>班主任访谈准备</option>
+                <option>家校沟通支持</option>
+                <option>心理咨询辅助</option>
+                <option>社区青少年服务</option>
+                <option>其他</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="initialReportSignature">报告署名</label>
+              <input id="initialReportSignature" name="reportSignature" placeholder="例如 心理辅导室" />
+            </div>
+            <div class="field field-wide">
+              <label for="initialOrganizationNote">机构备注</label>
+              <textarea id="initialOrganizationNote" name="note" rows="2" placeholder="例如 本系统仅供校内心理辅导参考"></textarea>
             </div>
             <button class="primary-button" type="submit">创建管理员并登录</button>
           </form>
@@ -557,6 +596,7 @@
       </section>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./app.js"></script>
   </body>
 </html>

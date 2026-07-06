@@ -1,13 +1,12 @@
 const { generateTeacherReport } = require("../model-adapters");
+const { readJsonBody, requireActiveProfile } = require("./_supabase");
 
 function accessCodeFrom(req, body) {
   return req.headers["x-access-code"] || body.accessCode || "";
 }
 
 function verifyAccessCode(code) {
-  if (!process.env.ACCESS_CODE) {
-    throw new Error("服务器尚未配置 ACCESS_CODE，请联系管理员。");
-  }
+  if (!process.env.ACCESS_CODE) throw new Error("missing_access_code_config");
   return String(code) === String(process.env.ACCESS_CODE);
 }
 
@@ -18,42 +17,46 @@ function sendJson(res, statusCode, payload) {
 }
 
 function safeErrorMessage(error) {
-  if (!error) return "未知错误";
+  if (!error) return "unknown_error";
   if (typeof error === "string") return error;
-  return error.message || error.name || "未知错误";
+  return error.message || error.name || "unknown_error";
 }
 
 async function handler(req, res) {
-  if (req.method !== "POST") return sendJson(res, 405, { error: "只支持 POST 请求。" });
+  if (req.method !== "POST") return sendJson(res, 405, { error: "method_not_allowed" });
 
   let body = {};
   try {
-    body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
+    body = await readJsonBody(req);
   } catch {
-    return sendJson(res, 400, { error: "请求内容格式不正确，请重新提交。" });
+    return sendJson(res, 400, { error: "bad_json" });
   }
 
   const { image, profile = {} } = body;
   try {
     if (!verifyAccessCode(accessCodeFrom(req, body))) {
-      return sendJson(res, 401, { error: "访问码不正确，请联系管理员微信 xinghaiweiguang" });
+      return sendJson(res, 401, { error: "invalid_access_code" });
     }
+    await requireActiveProfile(req);
   } catch (error) {
-    return sendJson(res, 500, { error: safeErrorMessage(error) });
+    const message = safeErrorMessage(error);
+    const status = ["missing_login_token", "invalid_login_state", "profile_not_found", "account_disabled"].includes(message) ? 401 : 500;
+    return sendJson(res, status, { error: message });
   }
+
   if (!image || typeof image !== "string" || !image.startsWith("data:image/")) {
-    return sendJson(res, 400, { error: "请上传有效的 JPG 或 PNG 图片。" });
+    return sendJson(res, 400, { error: "invalid_image" });
   }
   if (image.length > 7_200_000) {
-    return sendJson(res, 413, { error: "图片过大，请上传 5MB 以内的图片。" });
+    return sendJson(res, 413, { error: "image_too_large" });
   }
 
   try {
     const result = await generateTeacherReport({ image, profile });
     return sendJson(res, 200, result);
   } catch (error) {
-    console.error("模型调用失败：", error);
-    return sendJson(res, 500, { error: `服务器暂时无法完成分析：${safeErrorMessage(error)}` });
+    console.error("model_call_failed", error);
+    return sendJson(res, 500, { error: `model_call_failed:${safeErrorMessage(error)}` });
   }
 }
 
