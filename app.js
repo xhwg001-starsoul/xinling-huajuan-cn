@@ -8,6 +8,8 @@ const currentUserBadge = document.querySelector("#currentUserBadge");
 const currentRoleBadge = document.querySelector("#currentRoleBadge");
 const accountPanel = document.querySelector("#accountPanel");
 const accountPanelTitle = document.querySelector("#accountPanelTitle");
+const initialAdminEntry = document.querySelector("#initialAdminEntry");
+const toggleInitialAdminButton = document.querySelector("#toggleInitialAdminButton");
 const initialAdminForm = document.querySelector("#initialAdminForm");
 const userLoginForm = document.querySelector("#userLoginForm");
 const accountMessage = document.querySelector("#accountMessage");
@@ -66,6 +68,20 @@ const createTeacherForm = document.querySelector("#createTeacherForm");
 const createTeacherButton = document.querySelector("#createTeacherButton");
 const userManagementMessage = document.querySelector("#userManagementMessage");
 const userListBody = document.querySelector("#userListBody");
+const accountUsernameText = document.querySelector("#accountUsernameText");
+const accountDisplayNameText = document.querySelector("#accountDisplayNameText");
+const accountRoleText = document.querySelector("#accountRoleText");
+const accountOrganizationText = document.querySelector("#accountOrganizationText");
+const accountStatusText = document.querySelector("#accountStatusText");
+const changePasswordForm = document.querySelector("#changePasswordForm");
+const changePasswordButton = document.querySelector("#changePasswordButton");
+const changePasswordMessage = document.querySelector("#changePasswordMessage");
+const resetPasswordPanel = document.querySelector("#resetPasswordPanel");
+const resetPasswordTargetText = document.querySelector("#resetPasswordTargetText");
+const resetPasswordForm = document.querySelector("#resetPasswordForm");
+const submitResetPasswordButton = document.querySelector("#submitResetPasswordButton");
+const cancelResetPasswordButton = document.querySelector("#cancelResetPasswordButton");
+const resetPasswordMessage = document.querySelector("#resetPasswordMessage");
 const internalEntryButtons = document.querySelectorAll(".internal-entry-button");
 const backPublicButton = document.querySelector("#backPublicButton");
 
@@ -82,6 +98,7 @@ let selectedDataUrl = "";
 let lastReportText = "";
 let lastReportMeta = null;
 let isSubmitting = false;
+let showInitialAdminForm = false;
 
 const contentConfig = {
   心灵对话: { button: "生成心灵对话", title: "心灵对话", waiting: "正在生成心灵对话，请稍等。", done: "心灵对话已生成。" },
@@ -314,6 +331,33 @@ function sanitizeText(value) {
   return String(value || "").trim().slice(0, 120);
 }
 
+function passwordErrorMessage(code) {
+  const messages = {
+    current_password_required: "当前密码不能为空。",
+    new_password_required: "新密码不能为空。",
+    password_too_short: "新密码至少需要 8 位。",
+    password_confirm_not_match: "两次输入的新密码不一致。",
+    password_same_as_current: "新密码不能和当前密码完全相同。",
+    current_password_incorrect: "当前密码不正确，请重新输入。",
+    not_admin: "当前账号没有管理员权限。",
+    cannot_reset_self: "不能在账号管理中重置自己的密码，请使用“修改密码”。",
+    target_user_not_found: "未找到要重置密码的教师账号。",
+    different_organization: "不能操作其他机构的账号。",
+    reset_password_failed: "密码重置失败，请稍后再试。",
+    invalid_login_state: "登录状态已失效，请重新登录后再操作。",
+  };
+  return messages[code] || code || "网络或服务器错误，请稍后再试。";
+}
+
+function getPasswordValidationError(currentPassword, newPassword, confirmPassword, requireCurrent = true) {
+  if (requireCurrent && !currentPassword) return "current_password_required";
+  if (!newPassword) return "new_password_required";
+  if (newPassword.length < 8) return "password_too_short";
+  if (newPassword !== confirmPassword) return "password_confirm_not_match";
+  if (requireCurrent && newPassword === currentPassword) return "password_same_as_current";
+  return "";
+}
+
 function getOrganizationProfile() {
   try {
     const saved = JSON.parse(localStorage.getItem(organizationProfileKey) || "{}");
@@ -386,6 +430,7 @@ function applyOrganizationProfileToUI() {
   saveOrganizationButton.classList.toggle("is-hidden", !editable);
   clearOrganizationButton.classList.toggle("is-hidden", !editable);
   renderReportMeta();
+  renderAccountSecurityPanel();
 }
 
 function renderReportMeta(meta = lastReportMeta) {
@@ -412,9 +457,21 @@ function renderCurrentUserInfo() {
   currentUserBadge.textContent = `当前登录：${user ? user.displayName : "未登录"}`;
   currentRoleBadge.textContent = `角色：${user ? getRoleLabel(user.role) : "未登录"}`;
   logoutButton.textContent = user ? "退出账号" : "退出登录";
+  renderAccountSecurityPanel();
   renderCurrentTeacher();
   applyOrganizationProfileToUI();
   validateForm();
+}
+
+function renderAccountSecurityPanel() {
+  const user = getCurrentUser();
+  const organization = getOrganizationProfile();
+  if (!accountUsernameText) return;
+  accountUsernameText.textContent = user?.username || "未登录";
+  accountDisplayNameText.textContent = user?.displayName || "未登录";
+  accountRoleText.textContent = user ? getRoleLabel(user.role) : "未登录";
+  accountOrganizationText.textContent = organization.organizationName || "未设置";
+  accountStatusText.textContent = user ? (user.isActive === false ? "停用" : "启用") : "未登录";
 }
 
 function renderLoginPanel() {
@@ -433,6 +490,7 @@ function renderPermissionUI() {
   const user = getCurrentUser();
   const admin = isAdmin(user);
   userManagementPanel.classList.toggle("is-hidden", !admin);
+  if (!admin && resetPasswordPanel) closeResetPasswordForm();
   teacherFilterSelect.disabled = !admin;
   clearStatsButton.classList.toggle("is-hidden", !admin);
   clearCurrentTeacherStatsButton.classList.toggle("is-hidden", !admin);
@@ -592,12 +650,18 @@ initialAdminForm.addEventListener("submit", async (event) => {
   try {
     await createInitialAdmin(new FormData(initialAdminForm));
     initialAdminForm.reset();
+    showInitialAdminForm = false;
+    renderLoginPanel();
     accountMessage.textContent = "管理员已创建并登录。";
     accountMessage.classList.remove("error-note");
   } catch (error) {
     accountMessage.textContent = error.message || "创建管理员失败。";
     accountMessage.classList.add("error-note");
   }
+});
+toggleInitialAdminButton.addEventListener("click", () => {
+  showInitialAdminForm = !showInitialAdminForm;
+  renderLoginPanel();
 });
 userLoginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -621,6 +685,29 @@ createTeacherButton.addEventListener("click", async () => {
     userManagementMessage.classList.add("error-note");
   }
 });
+changePasswordButton.addEventListener("click", async () => {
+  try {
+    await changeCurrentUserPassword(new FormData(changePasswordForm));
+    changePasswordForm.reset();
+    changePasswordMessage.textContent = "密码修改成功，请使用新密码登录。";
+    changePasswordMessage.classList.remove("error-note");
+  } catch (error) {
+    changePasswordMessage.textContent = passwordErrorMessage(error.message);
+    changePasswordMessage.classList.add("error-note");
+  }
+});
+submitResetPasswordButton.addEventListener("click", async () => {
+  try {
+    await resetTeacherPassword();
+    resetPasswordForm.reset();
+    resetPasswordMessage.textContent = "教师密码已重置，请将新密码通过安全方式告知该教师，并提醒其登录后及时修改。";
+    resetPasswordMessage.classList.remove("error-note");
+  } catch (error) {
+    resetPasswordMessage.textContent = passwordErrorMessage(error.message);
+    resetPasswordMessage.classList.add("error-note");
+  }
+});
+cancelResetPasswordButton.addEventListener("click", closeResetPasswordForm);
 saveTeacherButton.addEventListener("click", () => saveCurrentTeacher(teacherAliasInput.value));
 teacherAliasInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") saveCurrentTeacher(teacherAliasInput.value);
@@ -1288,6 +1375,7 @@ let currentCloudOrganization = null;
 let cloudProfiles = [];
 let cloudUsageRecords = [];
 let cloudAuthReady = false;
+let resetPasswordTargetUser = null;
 
 function usernameToInternalEmail(username) {
   return `${normalizeUsername(username)}@xinlinghuajuan.invalid`;
@@ -1419,6 +1507,7 @@ logoutUser = async function logoutCloudUser() {
   currentCloudOrganization = null;
   cloudProfiles = [];
   cloudUsageRecords = [];
+  showInitialAdminForm = false;
   renderCurrentUserInfo();
   renderLoginPanel();
   showAnalysisView();
@@ -1460,6 +1549,28 @@ loginUser = async function loginCloudUser(formData) {
   await renderUsageStats();
 };
 
+async function changeCurrentUserPassword(formData) {
+  const user = getCurrentUser();
+  if (!user) throw new Error("invalid_login_state");
+  const currentPassword = String(formData.get("currentPassword") || "");
+  const newPassword = String(formData.get("newPassword") || "");
+  const confirmPassword = String(formData.get("confirmNewPassword") || "");
+  const validationError = getPasswordValidationError(currentPassword, newPassword, confirmPassword, true);
+  if (validationError) throw new Error(validationError);
+
+  await initSupabaseClient();
+  const { data: loginData, error: loginError } = await cloudSupabase.auth.signInWithPassword({
+    email: usernameToInternalEmail(user.username),
+    password: currentPassword,
+  });
+  if (loginError || !loginData.session) throw new Error("current_password_incorrect");
+
+  currentCloudSession = loginData.session;
+  const { error: updateError } = await cloudSupabase.auth.updateUser({ password: newPassword });
+  if (updateError) throw new Error(updateError.message || "reset_password_failed");
+  await loadCurrentProfile();
+}
+
 createTeacherUser = async function createTeacherCloudUser(formData) {
   if (!canManageUsers()) throw new Error("只有管理员可以创建教师账号。");
   const password = String(formData.get("password") || "");
@@ -1495,6 +1606,43 @@ updateUserStatus = async function updateTeacherCloudStatus(userId, isActive) {
   renderUserManagementPanel();
 };
 
+function openResetPasswordForm(user) {
+  resetPasswordTargetUser = user;
+  resetPasswordPanel.classList.remove("is-hidden");
+  resetPasswordTargetText.textContent = `正在重置：${user.displayName}（${user.username}）`;
+  resetPasswordForm.reset();
+  resetPasswordMessage.textContent = "";
+  resetPasswordMessage.classList.remove("error-note");
+  resetPasswordPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function closeResetPasswordForm() {
+  resetPasswordTargetUser = null;
+  resetPasswordPanel.classList.add("is-hidden");
+  resetPasswordForm.reset();
+  resetPasswordMessage.textContent = "";
+  resetPasswordMessage.classList.remove("error-note");
+}
+
+async function resetTeacherPassword() {
+  if (!canManageUsers()) throw new Error("not_admin");
+  if (!resetPasswordTargetUser) throw new Error("target_user_not_found");
+  const formData = new FormData(resetPasswordForm);
+  const newPassword = String(formData.get("newPassword") || "");
+  const confirmPassword = String(formData.get("confirmPassword") || "");
+  const validationError = getPasswordValidationError("", newPassword, confirmPassword, false);
+  if (validationError) throw new Error(validationError);
+
+  const token = await getCloudAccessToken();
+  const response = await fetch("/api/admin-reset-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ userId: resetPasswordTargetUser.id, newPassword }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) throw new Error(data.error || "reset_password_failed");
+}
+
 async function fetchProfilesForAdmin() {
   if (!isAdmin()) {
     cloudProfiles = [];
@@ -1509,8 +1657,10 @@ async function fetchProfilesForAdmin() {
 renderLoginPanel = function renderCloudLoginPanel() {
   const user = getCurrentUser();
   accountPanel.classList.toggle("is-hidden", Boolean(user));
-  initialAdminForm.classList.toggle("is-hidden", Boolean(user));
+  initialAdminEntry.classList.toggle("is-hidden", Boolean(user));
+  initialAdminForm.classList.toggle("is-hidden", Boolean(user) || !showInitialAdminForm);
   userLoginForm.classList.toggle("is-hidden", Boolean(user));
+  toggleInitialAdminButton.textContent = showInitialAdminForm ? "收起初始化管理员" : "首次部署？初始化管理员";
   accountPanelTitle.textContent = user ? `已登录：${user.displayName}` : "请先登录云端账号后使用心灵画卷";
   accountMessage.textContent = user
     ? "账号已登录。"
@@ -1556,6 +1706,14 @@ renderUserManagementPanel = async function renderCloudUserManagementPanel() {
     button.disabled = current?.id === user.id || user.role === "admin";
     button.addEventListener("click", () => updateUserStatus(user.id, user.isActive === false));
     actionCell.appendChild(button);
+    if (user.role === "teacher") {
+      const resetButton = document.createElement("button");
+      resetButton.className = "ghost-button table-button";
+      resetButton.type = "button";
+      resetButton.textContent = "重置密码";
+      resetButton.addEventListener("click", () => openResetPasswordForm(user));
+      actionCell.appendChild(resetButton);
+    }
     row.appendChild(actionCell);
     userListBody.appendChild(row);
   }

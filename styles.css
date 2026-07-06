@@ -936,6 +936,20 @@ textarea:focus {
   line-height: 1.7;
 }
 
+.reset-password-panel {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid rgba(104, 88, 63, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 252, 246, 0.78);
+}
+
+.deployment-entry {
+  margin: 8px 0 14px;
+  padding: 14px 0 4px;
+  border-top: 1px solid rgba(104, 88, 63, 0.12);
+}
+
 @media (max-width: 900px) {
   .app-shell {
     width: min(100% - 24px, 720px);

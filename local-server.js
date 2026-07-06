@@ -19,6 +19,7 @@ const apiHandlers = {
   "/api/bootstrap-admin": require("./api/bootstrap-admin"),
   "/api/admin-create-user": require("./api/admin-create-user"),
   "/api/admin-update-user-status": require("./api/admin-update-user-status"),
+  "/api/admin-reset-password": require("./api/admin-reset-password"),
 };
 
 const mimeTypes = {

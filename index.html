@@ -139,6 +139,11 @@
             <p class="account-note">当前账号系统为本机演示版，仅用于学校内部试用流程和权限结构演示。账号信息保存在本浏览器中，不等同于正式云端账号系统。正式上线前应升级为后端认证和数据库权限管理。</p>
           </div>
 
+          <div class="deployment-entry" id="initialAdminEntry">
+            <button class="ghost-button" id="toggleInitialAdminButton" type="button">首次部署？初始化管理员</button>
+            <p class="form-hint">日常使用请直接登录账号。初始化入口仅供系统部署者或机构负责人第一次创建云端管理员时使用。</p>
+          </div>
+
           <form class="account-form is-hidden" id="initialAdminForm">
             <div class="field">
               <label for="adminInitCode">初始化码</label>
@@ -412,6 +417,39 @@
             <button class="ghost-button" id="backToAnalysisButton" type="button">返回分析页面</button>
           </section>
 
+          <section class="dashboard-panel" id="accountSecurityPanel">
+            <div class="panel-head">
+              <p class="section-kicker">账号信息</p>
+              <h2>当前账号与密码安全</h2>
+              <p class="form-hint">为了账号安全，建议使用不少于 8 位的密码，并避免使用与其他网站相同的密码。</p>
+            </div>
+            <div class="overview-grid">
+              <div><span>当前账号</span><strong id="accountUsernameText">未登录</strong></div>
+              <div><span>显示名称</span><strong id="accountDisplayNameText">未登录</strong></div>
+              <div><span>角色</span><strong id="accountRoleText">未登录</strong></div>
+              <div><span>所属机构</span><strong id="accountOrganizationText">未设置</strong></div>
+              <div><span>账号状态</span><strong id="accountStatusText">未登录</strong></div>
+            </div>
+            <form class="organization-form" id="changePasswordForm">
+              <div class="field">
+                <label for="currentPasswordInput">当前密码</label>
+                <input id="currentPasswordInput" name="currentPassword" type="password" autocomplete="current-password" />
+              </div>
+              <div class="field">
+                <label for="newPasswordInput">新密码</label>
+                <input id="newPasswordInput" name="newPassword" type="password" autocomplete="new-password" />
+              </div>
+              <div class="field">
+                <label for="confirmNewPasswordInput">确认新密码</label>
+                <input id="confirmNewPasswordInput" name="confirmNewPassword" type="password" autocomplete="new-password" />
+              </div>
+            </form>
+            <div class="dashboard-actions">
+              <button class="ghost-button" id="changePasswordButton" type="button">修改密码</button>
+            </div>
+            <p class="form-hint" id="changePasswordMessage"></p>
+          </section>
+
           <section class="dashboard-panel" id="userManagementPanel">
             <div class="panel-head">
               <p class="section-kicker">管理员功能</p>
@@ -440,6 +478,28 @@
               <button class="ghost-button" id="createTeacherButton" type="button">创建教师账号</button>
             </div>
             <p class="form-hint" id="userManagementMessage"></p>
+            <section class="reset-password-panel is-hidden" id="resetPasswordPanel">
+              <div class="panel-head">
+                <p class="section-kicker">重置教师密码</p>
+                <h3 id="resetPasswordTargetText">请选择教师账号</h3>
+                <p class="form-hint">管理员重置密码后，请通过安全方式告知教师临时密码，并提醒教师登录后及时修改。</p>
+              </div>
+              <form class="organization-form" id="resetPasswordForm">
+                <div class="field">
+                  <label for="resetNewPasswordInput">新密码</label>
+                  <input id="resetNewPasswordInput" name="newPassword" type="password" autocomplete="new-password" />
+                </div>
+                <div class="field">
+                  <label for="resetConfirmPasswordInput">确认新密码</label>
+                  <input id="resetConfirmPasswordInput" name="confirmPassword" type="password" autocomplete="new-password" />
+                </div>
+              </form>
+              <div class="dashboard-actions">
+                <button class="ghost-button" id="submitResetPasswordButton" type="button">确认重置密码</button>
+                <button class="ghost-button" id="cancelResetPasswordButton" type="button">取消</button>
+              </div>
+              <p class="form-hint" id="resetPasswordMessage"></p>
+            </section>
             <div class="records-table-wrap">
               <table class="records-table">
                 <thead>
