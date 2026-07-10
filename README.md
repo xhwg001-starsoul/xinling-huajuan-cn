@@ -49,7 +49,7 @@ npm start
 4. 浏览器访问：
 
 ```text
-http://127.0.0.1:4173
+http://127.0.0.1:4185
 ```
 
 ## 环境变量
@@ -64,6 +64,25 @@ VITE_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
 ADMIN_INIT_CODE
 ```
+
+## 大陆版准备模式说明
+
+当前大陆版尚未接入正式国内数据库，默认使用大陆版本地准备模式：
+
+```text
+APP_REGION=cn
+AUTH_PROVIDER=cn-dev
+SETTINGS_PROVIDER=file
+ACCESS_CODE=你的内部访问码
+ADMIN_SETTINGS_CODE=你的管理员设置码
+```
+
+- `ACCESS_CODE` 用于普通内部访问。
+- `ADMIN_SETTINGS_CODE` 仅用于开发阶段临时保护“模型设置”，不是正式账号系统。
+- 当前账号系统暂不使用 Supabase；未配置 Supabase 时，系统会自动进入 `cn-dev` 模式。
+- 模型 API Key 只能放在服务器环境变量中，不能写入前端代码或模型设置文件。
+- `SETTINGS_PROVIDER=file` 时，模型设置会保存到 `data/model-settings.local.json`。
+- `data/*.local.json` 不应提交到 GitHub，文件中也只允许保存 provider 和 model 名称，不保存任何 API Key。
 
 大陆版未来预留变量：
 

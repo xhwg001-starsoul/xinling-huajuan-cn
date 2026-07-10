@@ -8,5 +8,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 *.local
+data/*.local.json
+data/model-settings.local.json
 Thumbs.db
 .DS_Store

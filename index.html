@@ -571,6 +571,82 @@
             </p>
           </section>
 
+          <section class="dashboard-panel" id="modelSettingsPanel">
+            <div class="panel-head">
+              <p class="section-kicker">系统设置</p>
+              <h2>管理员设置</h2>
+              <p class="form-hint">此区域仅供系统管理员使用。请输入管理员设置码后继续。</p>
+            </div>
+
+            <div id="modelSettingsLock">
+              <form class="organization-form" id="modelSettingsCodeForm">
+                <div class="field">
+                  <label for="adminSettingsCodeInput">管理员设置码</label>
+                  <input id="adminSettingsCodeInput" name="adminSettingsCode" type="password" autocomplete="one-time-code" />
+                </div>
+              </form>
+              <div class="dashboard-actions">
+                <button class="ghost-button" id="verifyModelSettingsButton" type="button">进入管理员设置</button>
+              </div>
+            </div>
+
+            <div class="is-hidden" id="modelSettingsUnlockedIntro">
+              <p class="form-hint">此处只配置模型供应商和模型名称，不保存 API Key。API Key 必须在服务器环境变量中配置。</p>
+            </div>
+
+            <form class="organization-form is-hidden" id="modelSettingsForm">
+              <div class="field">
+                <label for="pipelineModeInput">工作模式</label>
+                <select id="pipelineModeInput" name="pipelineMode">
+                  <option value="single">single：单模型模式</option>
+                  <option value="split">split：视觉模型 + 文本模型</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="singleProviderInput">单模型供应商</label>
+                <select id="singleProviderInput" name="singleProvider">
+                  <option value="openai">openai</option>
+                  <option value="qwen">qwen</option>
+                  <option value="doubao">doubao</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="singleModelInput">单模型名称</label>
+                <input id="singleModelInput" name="singleModel" placeholder="gpt-4o-mini" />
+              </div>
+              <div class="field">
+                <label for="visionProviderInput">视觉模型供应商</label>
+                <select id="visionProviderInput" name="visionProvider">
+                  <option value="openai">openai</option>
+                  <option value="qwen">qwen</option>
+                  <option value="doubao">doubao</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="visionModelInput">视觉模型名称</label>
+                <input id="visionModelInput" name="visionModel" placeholder="gpt-4o-mini" />
+              </div>
+              <div class="field">
+                <label for="textProviderInput">文本模型供应商</label>
+                <select id="textProviderInput" name="textProvider">
+                  <option value="openai">openai</option>
+                  <option value="deepseek">deepseek</option>
+                  <option value="qwen">qwen</option>
+                  <option value="doubao">doubao</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="textModelInput">文本模型名称</label>
+                <input id="textModelInput" name="textModel" placeholder="gpt-4o-mini" />
+              </div>
+            </form>
+            <div class="dashboard-actions is-hidden" id="modelSettingsActions">
+              <button class="ghost-button" id="reloadModelSettingsButton" type="button">重新读取设置</button>
+              <button class="ghost-button" id="saveModelSettingsButton" type="button">保存设置</button>
+            </div>
+            <p class="form-hint" id="modelSettingsMessage">管理员设置由设置码临时保护。</p>
+          </section>
+
           <section class="dashboard-panel">
             <div class="panel-head">
               <p class="section-kicker">当前配置</p>

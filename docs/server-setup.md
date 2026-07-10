@@ -1,0 +1,9 @@
+apt update
+apt install -y nodejs npm nginx
+npm install -g pm2
+
+mkdir -p /var/www/xinling-test
+# 创建 server.js
+pm2 start server.js --name xinling-test
+pm2 startup
+pm2 save

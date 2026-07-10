@@ -143,12 +143,34 @@ function selectedPlan(profile) {
   return documentPlans[normalizeContentType(profile)] || documentPlans[CONTENT_TYPES.dialogue];
 }
 
-function selectedProvider(step) {
+function selectedProvider(step, modelConfig) {
+  if (modelConfig?.pipelineMode === "single") {
+    return String(modelConfig.singleProvider || "openai").toLowerCase();
+  }
+  if (modelConfig?.pipelineMode === "split") {
+    return String(step === "vision" ? modelConfig.visionProvider : modelConfig.textProvider).toLowerCase();
+  }
+
   const key =
     step === "vision"
       ? process.env.VISION_MODEL_PROVIDER || process.env.MODEL_PROVIDER || "openai"
       : process.env.TEXT_MODEL_PROVIDER || process.env.MODEL_PROVIDER || "openai";
   return String(key).toLowerCase();
+}
+
+function selectedModel(step, config, modelConfig) {
+  if (modelConfig?.pipelineMode === "single") {
+    return modelConfig.singleModel || process.env.OPENAI_MODEL || config.defaultTextModel;
+  }
+  if (modelConfig?.pipelineMode === "split") {
+    return step === "vision"
+      ? modelConfig.visionModel || process.env[config.visionModelEnv] || process.env.OPENAI_MODEL || config.defaultVisionModel
+      : modelConfig.textModel || process.env[config.textModelEnv] || process.env.OPENAI_MODEL || config.defaultTextModel;
+  }
+
+  return step === "vision"
+    ? process.env[config.visionModelEnv] || process.env.OPENAI_MODEL || config.defaultVisionModel
+    : process.env[config.textModelEnv] || process.env.OPENAI_MODEL || config.defaultTextModel;
 }
 
 function providerConfig(providerKey) {
@@ -159,7 +181,7 @@ function providerConfig(providerKey) {
   return config;
 }
 
-function assertProviderReady(providerKey, step) {
+function assertProviderReady(providerKey, step, modelConfig) {
   const config = providerConfig(providerKey);
   if (!config.implemented) {
     throw new Error(`${config.name} 适配器已预留配置，但当前尚未接入真实调用逻辑。请先实现该供应商的后端适配器并设置 ${config.apiKeyEnv}。`);
@@ -171,10 +193,7 @@ function assertProviderReady(providerKey, step) {
     config,
     apiKey: process.env[config.apiKeyEnv],
     baseUrl: process.env[config.baseUrlEnv] || config.defaultBaseUrl,
-    model:
-      step === "vision"
-        ? process.env[config.visionModelEnv] || process.env.OPENAI_MODEL || config.defaultVisionModel
-        : process.env[config.textModelEnv] || process.env.OPENAI_MODEL || config.defaultTextModel,
+    model: selectedModel(step, config, modelConfig),
   };
 }
 
@@ -189,8 +208,8 @@ function extractOutputText(response) {
   return texts.join("\n").trim();
 }
 
-async function callOpenAI({ prompt, image, step, maxOutputTokens }) {
-  const { apiKey, baseUrl, model } = assertProviderReady("openai", step);
+async function callOpenAI({ prompt, image, step, maxOutputTokens, modelConfig }) {
+  const { apiKey, baseUrl, model } = assertProviderReady("openai", step, modelConfig);
   const content = [{ type: "input_text", text: prompt }];
   if (image) {
     content.push({ type: "input_image", image_url: image, detail: "high" });
@@ -222,11 +241,11 @@ async function callOpenAI({ prompt, image, step, maxOutputTokens }) {
   return extractOutputText(data);
 }
 
-async function callModel({ provider, prompt, image, step, maxOutputTokens }) {
+async function callModel({ provider, prompt, image, step, maxOutputTokens, modelConfig }) {
   if (provider === "openai") {
-    return callOpenAI({ prompt, image, step, maxOutputTokens });
+    return callOpenAI({ prompt, image, step, maxOutputTokens, modelConfig });
   }
-  assertProviderReady(provider, step);
+  assertProviderReady(provider, step, modelConfig);
   throw new Error(`${providerConfig(provider).name} 适配器已预留，但尚未实现请求格式。`);
 }
 
@@ -393,9 +412,9 @@ function documentTitleFromMarkdown(markdown, fallback) {
   return firstHeading ? firstHeading.replace(/^#\s+/, "").trim() : fallback;
 }
 
-async function generateTeacherReport({ image, profile }) {
-  const visionProvider = selectedProvider("vision");
-  const textProvider = selectedProvider("text");
+async function generateTeacherReport({ image, profile, modelConfig }) {
+  const visionProvider = selectedProvider("vision", modelConfig);
+  const textProvider = selectedProvider("text", modelConfig);
   const contentType = normalizeContentType(profile);
   const plan = selectedPlan(profile);
 
@@ -405,6 +424,7 @@ async function generateTeacherReport({ image, profile }) {
     image,
     prompt: buildObjectiveObservationPrompt(),
     maxOutputTokens: 2200,
+    modelConfig,
   });
 
   const textPrompt = isDialogueMode(profile)
@@ -416,6 +436,7 @@ async function generateTeacherReport({ image, profile }) {
     step: "text",
     prompt: textPrompt,
     maxOutputTokens: isDialogueMode(profile) ? 6500 : 8000,
+    modelConfig,
   });
 
   return {

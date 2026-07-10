@@ -1,5 +1,6 @@
-const { generateTeacherReport } = require("../model-adapters");
-const { readJsonBody, requireActiveProfile } = require("./_supabase");
+const { generateAnalysisWithModelRouter } = require("../services/modelRouter");
+const { getModelSettings } = require("../services/modelSettingsStore");
+const { readJsonBody, requireActiveProfileIfConfigured } = require("./_supabase");
 
 function accessCodeFrom(req, body) {
   return req.headers["x-access-code"] || body.accessCode || "";
@@ -37,7 +38,7 @@ async function handler(req, res) {
     if (!verifyAccessCode(accessCodeFrom(req, body))) {
       return sendJson(res, 401, { error: "invalid_access_code" });
     }
-    await requireActiveProfile(req);
+    await requireActiveProfileIfConfigured(req);
   } catch (error) {
     const message = safeErrorMessage(error);
     const status = ["missing_login_token", "invalid_login_state", "profile_not_found", "account_disabled"].includes(message) ? 401 : 500;
@@ -52,11 +53,24 @@ async function handler(req, res) {
   }
 
   try {
-    const result = await generateTeacherReport({ image, profile });
+    const modelConfig = body.modelConfig || (await getModelSettings());
+    const result = await generateAnalysisWithModelRouter({
+      images: [image],
+      userInputs: profile,
+      contentType: profile.contentType || profile.desiredHelp || profile.reportMode,
+      modelConfig,
+    });
     return sendJson(res, 200, result);
   } catch (error) {
     console.error("model_call_failed", error);
-    return sendJson(res, 500, { error: `model_call_failed:${safeErrorMessage(error)}` });
+    const message = safeErrorMessage(error);
+    if (message === "provider_not_implemented") {
+      return sendJson(res, 400, {
+        error: "provider_not_implemented",
+        message: "当前模型供应商已保存，但该供应商的真实调用适配尚未完成。请暂时切回 OpenAI，或继续接入国内模型。",
+      });
+    }
+    return sendJson(res, 500, { error: `model_call_failed:${message}` });
   }
 }
 

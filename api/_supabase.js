@@ -1,4 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
+const { getRuntimeMode } = require("../config/runtimeMode");
 
 function normalizeUsername(value) {
   return String(value || "").trim().toLowerCase();
@@ -18,6 +19,11 @@ function serviceClient() {
   return createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+}
+
+function hasSupabaseConfig() {
+  const runtime = getRuntimeMode();
+  return runtime.authProvider !== "cn-dev" && Boolean(process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_ANON_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
 async function readJsonBody(req) {
@@ -76,6 +82,18 @@ async function requireActiveProfile(req) {
   return { supabase, user, profile };
 }
 
+async function requireActiveProfileIfConfigured(req) {
+  if (!hasSupabaseConfig()) {
+    return {
+      supabase: null,
+      user: null,
+      profile: null,
+      skipped: true,
+    };
+  }
+  return requireActiveProfile(req);
+}
+
 async function requireAdmin(req) {
   const context = await requireActiveProfile(req);
   if (context.profile.role !== "admin") throw new Error("admin_required");
@@ -87,10 +105,12 @@ module.exports = {
   isValidUsername,
   usernameToInternalEmail,
   serviceClient,
+  hasSupabaseConfig,
   readJsonBody,
   sendJson,
   getBearerToken,
   getAuthUserFromToken,
   requireActiveProfile,
+  requireActiveProfileIfConfigured,
   requireAdmin,
 };

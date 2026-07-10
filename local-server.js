@@ -8,7 +8,7 @@ const rootDir = __dirname;
 dotenv.config({ path: path.join(rootDir, ".env"), quiet: true });
 dotenv.config({ path: path.join(rootDir, ".env.local"), override: true, quiet: true });
 
-const port = Number(process.env.PORT || 4173);
+const port = Number(process.env.PORT || 4185);
 
 logEnvironmentStatus();
 
@@ -20,6 +20,8 @@ const apiHandlers = {
   "/api/admin-create-user": require("./api/admin-create-user"),
   "/api/admin-update-user-status": require("./api/admin-update-user-status"),
   "/api/admin-reset-password": require("./api/admin-reset-password"),
+  "/api/verify-admin-settings": require("./api/verify-admin-settings").handler,
+  "/api/model-settings": require("./api/model-settings"),
 };
 
 const mimeTypes = {
@@ -40,6 +42,10 @@ function logEnvironmentStatus() {
     "VITE_SUPABASE_ANON_KEY",
     "SUPABASE_SERVICE_ROLE_KEY",
     "ADMIN_INIT_CODE",
+    "APP_REGION",
+    "AUTH_PROVIDER",
+    "SETTINGS_PROVIDER",
+    "ADMIN_SETTINGS_CODE",
   ];
 
   console.log("环境变量检查：");
@@ -82,5 +88,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, "127.0.0.1", () => {
-  console.log(`心灵画卷教师版已启动：http://127.0.0.1:${port}`);
+  console.log(`心灵画卷大陆版准备项目已启动：http://127.0.0.1:${port}`);
 });

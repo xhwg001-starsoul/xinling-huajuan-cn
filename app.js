@@ -82,11 +82,22 @@ const resetPasswordForm = document.querySelector("#resetPasswordForm");
 const submitResetPasswordButton = document.querySelector("#submitResetPasswordButton");
 const cancelResetPasswordButton = document.querySelector("#cancelResetPasswordButton");
 const resetPasswordMessage = document.querySelector("#resetPasswordMessage");
+const modelSettingsPanel = document.querySelector("#modelSettingsPanel");
+const modelSettingsLock = document.querySelector("#modelSettingsLock");
+const modelSettingsCodeForm = document.querySelector("#modelSettingsCodeForm");
+const verifyModelSettingsButton = document.querySelector("#verifyModelSettingsButton");
+const modelSettingsUnlockedIntro = document.querySelector("#modelSettingsUnlockedIntro");
+const modelSettingsForm = document.querySelector("#modelSettingsForm");
+const modelSettingsActions = document.querySelector("#modelSettingsActions");
+const reloadModelSettingsButton = document.querySelector("#reloadModelSettingsButton");
+const saveModelSettingsButton = document.querySelector("#saveModelSettingsButton");
+const modelSettingsMessage = document.querySelector("#modelSettingsMessage");
 const internalEntryButtons = document.querySelectorAll(".internal-entry-button");
 const backPublicButton = document.querySelector("#backPublicButton");
 
 const accessStateKey = "xinling_access_ok";
 const accessCodeKey = "xinling_access_code";
+const adminSettingsAccessKey = "xinling_admin_settings_ok";
 const currentUserKey = "soul_painting_current_user";
 const usersKey = "soul_painting_users";
 const usageRecordsKey = "soul_painting_usage_records";
@@ -497,6 +508,61 @@ function renderPermissionUI() {
   renderUserManagementPanel();
 }
 
+function isModelSettingsUnlocked() {
+  return sessionStorage.getItem(adminSettingsAccessKey) === "true";
+}
+
+function setModelSettingsMessage(message, isError = false) {
+  modelSettingsMessage.textContent = message;
+  modelSettingsMessage.classList.toggle("error-note", Boolean(isError));
+}
+
+function modelSettingsFromForm() {
+  const formData = new FormData(modelSettingsForm);
+  return {
+    pipelineMode: formData.get("pipelineMode"),
+    singleProvider: formData.get("singleProvider"),
+    singleModel: formData.get("singleModel"),
+    visionProvider: formData.get("visionProvider"),
+    visionModel: formData.get("visionModel"),
+    textProvider: formData.get("textProvider"),
+    textModel: formData.get("textModel"),
+  };
+}
+
+function applyModelSettingsToForm(settings = {}) {
+  modelSettingsForm.pipelineMode.value = settings.pipelineMode || "single";
+  modelSettingsForm.singleProvider.value = settings.singleProvider || "openai";
+  modelSettingsForm.singleModel.value = settings.singleModel || "gpt-4o-mini";
+  modelSettingsForm.visionProvider.value = settings.visionProvider || "openai";
+  modelSettingsForm.visionModel.value = settings.visionModel || "gpt-4o-mini";
+  modelSettingsForm.textProvider.value = settings.textProvider || "openai";
+  modelSettingsForm.textModel.value = settings.textModel || "gpt-4o-mini";
+}
+
+async function loadModelSettings() {
+  const response = await fetch("/api/model-settings");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) throw new Error(data.error || "读取设置失败。");
+  applyModelSettingsToForm(data.settings);
+  const sourceLabel = data.settings?.source ? `当前来源：${data.settings.source}` : "已读取当前设置。";
+  setModelSettingsMessage(sourceLabel);
+}
+
+function renderModelSettingsPanel() {
+  if (!modelSettingsPanel) return;
+  const unlocked = isModelSettingsUnlocked();
+  modelSettingsLock.classList.toggle("is-hidden", unlocked);
+  modelSettingsUnlockedIntro.classList.toggle("is-hidden", !unlocked);
+  modelSettingsForm.classList.toggle("is-hidden", !unlocked);
+  modelSettingsActions.classList.toggle("is-hidden", !unlocked);
+  if (unlocked) {
+    loadModelSettings().catch((error) => setModelSettingsMessage(error.message || "读取设置失败。", true));
+  } else {
+    setModelSettingsMessage("管理员设置由设置码临时保护。");
+  }
+}
+
 function renderUserManagementPanel() {
   if (!canManageUsers()) return;
   const current = getCurrentUser();
@@ -622,6 +688,7 @@ logoutButton.addEventListener("click", () => {
   }
   sessionStorage.removeItem(accessStateKey);
   sessionStorage.removeItem(accessCodeKey);
+  sessionStorage.removeItem(adminSettingsAccessKey);
   loginForm.reset();
   resetWorkspace();
   showLogin();
@@ -638,6 +705,7 @@ function showDashboardView() {
   dashboardView.classList.remove("is-hidden");
   renderPermissionUI();
   renderUsageStats();
+  renderModelSettingsPanel();
 }
 
 analysisViewButton.addEventListener("click", showAnalysisView);
@@ -716,6 +784,55 @@ saveOrganizationButton.addEventListener("click", saveOrganizationProfile);
 clearOrganizationButton.addEventListener("click", () => {
   if (confirm("确定要清空本浏览器中的机构信息吗？这不会影响教师身份和使用统计记录。")) {
     clearOrganizationProfile();
+  }
+});
+verifyModelSettingsButton.addEventListener("click", async () => {
+  const adminSettingsCode = String(new FormData(modelSettingsCodeForm).get("adminSettingsCode") || "").trim();
+  if (!adminSettingsCode) {
+    setModelSettingsMessage("请输入管理员设置码。", true);
+    return;
+  }
+  try {
+    const response = await fetch("/api/verify-admin-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adminSettingsCode }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || "管理员设置码不正确。");
+    sessionStorage.setItem(adminSettingsAccessKey, "true");
+    setModelSettingsMessage("已进入管理员设置。");
+    renderModelSettingsPanel();
+  } catch (error) {
+    setModelSettingsMessage(error.message || "管理员设置码验证失败。", true);
+  }
+});
+reloadModelSettingsButton.addEventListener("click", () => {
+  loadModelSettings().catch((error) => setModelSettingsMessage(error.message || "读取设置失败。", true));
+});
+saveModelSettingsButton.addEventListener("click", async () => {
+  const adminSettingsCode = String(new FormData(modelSettingsCodeForm).get("adminSettingsCode") || "").trim();
+  if (!adminSettingsCode) {
+    sessionStorage.removeItem(adminSettingsAccessKey);
+    renderModelSettingsPanel();
+    setModelSettingsMessage("请重新输入管理员设置码后保存。", true);
+    return;
+  }
+  try {
+    const response = await fetch("/api/model-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        adminSettingsCode,
+        settings: modelSettingsFromForm(),
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || "保存设置失败。");
+    applyModelSettingsToForm(data.settings);
+    setModelSettingsMessage("设置已保存。当前不会保存任何 API Key。");
+  } catch (error) {
+    setModelSettingsMessage(error.message || "保存设置失败。", true);
   }
 });
 
@@ -1265,10 +1382,12 @@ analyzeButton.addEventListener("click", async () => {
   loadingCard.scrollIntoView({ behavior: "smooth", block: "center" });
 
   try {
-    const authToken = await getCloudAccessToken();
+    const authToken = cloudAuthReady ? await getCloudAccessToken() : "";
+    const headers = { "Content-Type": "application/json", "X-Access-Code": accessCode };
+    if (authToken) headers.Authorization = `Bearer ${authToken}`;
     const response = await fetch("/api/analyze", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Access-Code": accessCode, Authorization: `Bearer ${authToken}` },
+      headers,
       body: JSON.stringify({
         accessCode,
         image: selectedDataUrl,
@@ -1386,6 +1505,7 @@ async function initSupabaseClient() {
   if (!window.supabase?.createClient) throw new Error("Supabase 客户端未加载，请检查网络或稍后重试。");
   const response = await fetch("/api/supabase-config");
   const config = await response.json().catch(() => ({}));
+  if (config.authProvider === "cn-dev") throw new Error("cn_dev_mode");
   if (!response.ok || !config.url || !config.anonKey) throw new Error("Supabase 环境变量尚未配置完整。");
   cloudSupabase = window.supabase.createClient(config.url, config.anonKey);
   return cloudSupabase;
@@ -1484,6 +1604,13 @@ isTeacher = function isCloudTeacher(user = getCurrentUser()) {
 };
 
 requireLogin = function requireCloudLogin(message = "请先登录后使用心灵画卷。") {
+  if (!cloudAuthReady) {
+    const hasAccess = sessionStorage.getItem(accessStateKey) === "true" && sessionStorage.getItem(accessCodeKey);
+    if (hasAccess) return true;
+    setStatus("访问状态已失效，请重新输入内部访问码。", true);
+    showLogin();
+    return false;
+  }
   const user = getCurrentUser();
   if (user) return true;
   setStatus(message, true);
@@ -1655,6 +1782,13 @@ async function fetchProfilesForAdmin() {
 }
 
 renderLoginPanel = function renderCloudLoginPanel() {
+  if (!cloudAuthReady) {
+    accountPanel.classList.add("is-hidden");
+    initialAdminEntry.classList.add("is-hidden");
+    initialAdminForm.classList.add("is-hidden");
+    userLoginForm.classList.add("is-hidden");
+    return;
+  }
   const user = getCurrentUser();
   accountPanel.classList.toggle("is-hidden", Boolean(user));
   initialAdminEntry.classList.toggle("is-hidden", Boolean(user));
@@ -1919,8 +2053,8 @@ async function initializeCloudApp() {
     cloudAuthReady = true;
   } catch (error) {
     cloudAuthReady = false;
-    accountMessage.textContent = error.message || "Supabase 初始化失败，请检查环境变量。";
-    accountMessage.classList.add("error-note");
+    accountMessage.textContent = "当前为大陆版本地准备模式：仅使用内部访问码进入，暂不启用 Supabase 云端账号。";
+    accountMessage.classList.remove("error-note");
   }
   renderCurrentUserInfo();
   renderLoginPanel();
