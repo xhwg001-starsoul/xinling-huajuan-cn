@@ -62,8 +62,12 @@ async function handler(req, res) {
     });
     return sendJson(res, 200, result);
   } catch (error) {
-    console.error("model_call_failed", error);
     const message = safeErrorMessage(error);
+    console.error("model_call_failed", {
+      name: error?.name || "Error",
+      message,
+      provider: error?.provider || "",
+    });
     if (message === "provider_not_implemented") {
       return sendJson(res, 400, {
         error: "provider_not_implemented",

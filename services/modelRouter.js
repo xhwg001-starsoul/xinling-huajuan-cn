@@ -6,17 +6,33 @@ function firstImageFrom(images) {
   return images;
 }
 
-function assertOpenAIOnly(modelConfig) {
-  const providers =
-    modelConfig.pipelineMode === "split"
-      ? [modelConfig.visionProvider, modelConfig.textProvider]
-      : [modelConfig.singleProvider];
+function providerNotImplemented(provider, message) {
+  const error = new Error("provider_not_implemented");
+  error.provider = provider;
+  if (message) error.detail = message;
+  throw error;
+}
 
-  const unsupportedProvider = providers.find((provider) => provider !== "openai");
-  if (unsupportedProvider) {
-    const error = new Error("provider_not_implemented");
-    error.provider = unsupportedProvider;
-    throw error;
+function assertSupportedRouting(modelConfig) {
+  if (modelConfig.pipelineMode === "single") {
+    if (modelConfig.singleProvider !== "openai") {
+      providerNotImplemented(
+        modelConfig.singleProvider,
+        "单模型模式需要同一个模型同时完成读图和报告生成，当前仅支持 OpenAI。"
+      );
+    }
+    return;
+  }
+
+  if (modelConfig.visionProvider !== "openai") {
+    providerNotImplemented(
+      modelConfig.visionProvider,
+      "当前读图阶段仍只使用 OpenAI 视觉模型。"
+    );
+  }
+
+  if (!["openai", "deepseek"].includes(modelConfig.textProvider)) {
+    providerNotImplemented(modelConfig.textProvider);
   }
 }
 
@@ -28,7 +44,7 @@ async function generateAnalysisWithModelRouter({
   modelConfig,
 }) {
   const resolvedConfig = normalizeModelConfig(modelConfig);
-  assertOpenAIOnly(resolvedConfig);
+  assertSupportedRouting(resolvedConfig);
 
   const profile = {
     ...userInputs,

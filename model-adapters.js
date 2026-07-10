@@ -13,6 +13,16 @@ const PROVIDERS = {
     defaultTextModel: "gpt-4.1",
     implemented: true,
   },
+  deepseek: {
+    name: "DeepSeek",
+    apiKeyEnv: "DEEPSEEK_API_KEY",
+    baseUrlEnv: "DEEPSEEK_BASE_URL",
+    defaultBaseUrl: "https://api.deepseek.com",
+    textModelEnv: "DEEPSEEK_TEXT_MODEL",
+    defaultTextModel: "deepseek-chat",
+    implemented: true,
+    supportsVision: false,
+  },
   qwen: {
     name: "Qwen",
     apiKeyEnv: "QWEN_API_KEY",
@@ -158,19 +168,29 @@ function selectedProvider(step, modelConfig) {
   return String(key).toLowerCase();
 }
 
+function openAIModelFallback(config) {
+  return config.apiKeyEnv === "OPENAI_API_KEY" ? process.env.OPENAI_MODEL : "";
+}
+
+function chatCompletionsUrl(baseUrl) {
+  const normalized = String(baseUrl || "").replace(/\/+$/, "");
+  if (normalized.endsWith("/chat/completions")) return normalized;
+  return `${normalized}/chat/completions`;
+}
+
 function selectedModel(step, config, modelConfig) {
   if (modelConfig?.pipelineMode === "single") {
-    return modelConfig.singleModel || process.env.OPENAI_MODEL || config.defaultTextModel;
+    return modelConfig.singleModel || openAIModelFallback(config) || config.defaultTextModel;
   }
   if (modelConfig?.pipelineMode === "split") {
     return step === "vision"
-      ? modelConfig.visionModel || process.env[config.visionModelEnv] || process.env.OPENAI_MODEL || config.defaultVisionModel
-      : modelConfig.textModel || process.env[config.textModelEnv] || process.env.OPENAI_MODEL || config.defaultTextModel;
+      ? modelConfig.visionModel || process.env[config.visionModelEnv] || openAIModelFallback(config) || config.defaultVisionModel
+      : modelConfig.textModel || process.env[config.textModelEnv] || openAIModelFallback(config) || config.defaultTextModel;
   }
 
   return step === "vision"
-    ? process.env[config.visionModelEnv] || process.env.OPENAI_MODEL || config.defaultVisionModel
-    : process.env[config.textModelEnv] || process.env.OPENAI_MODEL || config.defaultTextModel;
+    ? process.env[config.visionModelEnv] || openAIModelFallback(config) || config.defaultVisionModel
+    : process.env[config.textModelEnv] || openAIModelFallback(config) || config.defaultTextModel;
 }
 
 function providerConfig(providerKey) {
@@ -186,7 +206,15 @@ function assertProviderReady(providerKey, step, modelConfig) {
   if (!config.implemented) {
     throw new Error(`${config.name} 适配器已预留配置，但当前尚未接入真实调用逻辑。请先实现该供应商的后端适配器并设置 ${config.apiKeyEnv}。`);
   }
+  if (step === "vision" && config.supportsVision === false) {
+    const error = new Error("provider_not_implemented");
+    error.provider = providerKey;
+    throw error;
+  }
   if (!process.env[config.apiKeyEnv]) {
+    if (providerKey === "deepseek") {
+      throw new Error("deepseek_api_key_missing");
+    }
     throw new Error(`还没有读取到 ${config.apiKeyEnv}。请在后端环境变量中设置该 API Key。`);
   }
   return {
@@ -241,9 +269,136 @@ async function callOpenAI({ prompt, image, step, maxOutputTokens, modelConfig })
   return extractOutputText(data);
 }
 
-async function callModel({ provider, prompt, image, step, maxOutputTokens, modelConfig }) {
+function extractChatCompletionText(response) {
+  const choice = response.choices?.[0];
+  const content = choice?.message?.content;
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => (typeof item === "string" ? item : item.text || ""))
+      .join("\n")
+      .trim();
+  }
+  return typeof content === "string" ? content.trim() : "";
+}
+
+function containsImagePayload(value) {
+  const text = String(value || "");
+  return /data:image\//i.test(text) || /;base64,/i.test(text) || /base64,[A-Za-z0-9+/=]{80,}/i.test(text);
+}
+
+function summarizeDeepSeekError(data, fallback) {
+  const error = data?.error || {};
+  return {
+    code: error.code || data?.code || "",
+    message: String(error.message || data?.message || fallback || "DeepSeek 调用失败").slice(0, 160),
+  };
+}
+
+function logDeepSeekDebug(summary) {
+  if (process.env.MODEL_DEBUG !== "1") return;
+  console.warn("deepseek_call_debug", summary);
+}
+
+async function callDeepSeek({ prompt, image, step, maxOutputTokens, modelConfig, visionObservationText }) {
+  if (step === "vision" || image || containsImagePayload(prompt)) {
+    throw new Error("deepseek_received_image_input");
+  }
+  if (!String(visionObservationText || "").trim()) {
+    throw new Error("missing_vision_observation_text");
+  }
+
+  const { apiKey, baseUrl, model } = assertProviderReady("deepseek", step, modelConfig);
+  const response = await fetch(chatCompletionsUrl(baseUrl), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: "system",
+          content: "你是一名专业、谨慎、有温度的学校心理辅导辅助分析助手。你只基于用户提供的纯文本材料生成辅助报告，不做医学诊断，不夸大结论。",
+        },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: maxOutputTokens,
+      temperature: 0.7,
+    }),
+  });
+
+  const responseText = await response.text();
+  let data = {};
+  try {
+    data = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    throw new Error(`模型返回了非 JSON 内容：${responseText.slice(0, 300)}`);
+  }
+  if (!response.ok) {
+    throw new Error(data.error?.message || `${providerConfig("deepseek").name} 调用失败`);
+  }
+  return extractChatCompletionText(data);
+}
+
+async function callDeepSeekText({ prompt, image, step, maxOutputTokens, modelConfig, visionObservationText }) {
+  if (step === "vision" || image || containsImagePayload(prompt)) {
+    throw new Error("deepseek_received_image_input");
+  }
+  if (!String(visionObservationText || "").trim()) {
+    throw new Error("missing_vision_observation_text");
+  }
+
+  const { apiKey, baseUrl, model } = assertProviderReady("deepseek", step, modelConfig);
+  const response = await fetch(chatCompletionsUrl(baseUrl), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: "system",
+          content: "你是一名专业、谨慎、有温度的学校心理辅导辅助分析助手。你只基于用户提供的纯文本材料生成辅助报告，不做医学诊断，不夸大结论。",
+        },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: maxOutputTokens,
+      temperature: 0.7,
+    }),
+  });
+
+  const responseText = await response.text();
+  let data = {};
+  try {
+    data = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    throw new Error(`模型返回了非 JSON 内容：${responseText.slice(0, 300)}`);
+  }
+  if (!response.ok) {
+    const summary = summarizeDeepSeekError(data, `${providerConfig("deepseek").name} 调用失败`);
+    logDeepSeekDebug({
+      pipelineMode: modelConfig?.pipelineMode || "single",
+      visionProvider: modelConfig?.visionProvider || "",
+      textProvider: modelConfig?.textProvider || "",
+      hasVisionObservationText: Boolean(String(visionObservationText || "").trim()),
+      status: response.status,
+      errorCode: summary.code,
+      errorSummary: summary.message,
+    });
+    throw new Error(summary.code ? `deepseek_http_${response.status}:${summary.code}:${summary.message}` : `deepseek_http_${response.status}:${summary.message}`);
+  }
+  return extractChatCompletionText(data);
+}
+
+async function callModel({ provider, prompt, image, step, maxOutputTokens, modelConfig, visionObservationText }) {
   if (provider === "openai") {
     return callOpenAI({ prompt, image, step, maxOutputTokens, modelConfig });
+  }
+  if (provider === "deepseek") {
+    return callDeepSeekText({ prompt, image, step, maxOutputTokens, modelConfig, visionObservationText });
   }
   assertProviderReady(provider, step, modelConfig);
   throw new Error(`${providerConfig(provider).name} 适配器已预留，但尚未实现请求格式。`);
@@ -437,6 +592,7 @@ async function generateTeacherReport({ image, profile, modelConfig }) {
     prompt: textPrompt,
     maxOutputTokens: isDialogueMode(profile) ? 6500 : 8000,
     modelConfig,
+    visionObservationText: observationRecord,
   });
 
   return {
