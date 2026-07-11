@@ -204,8 +204,14 @@ function requireCurrentUser(token) {
 }
 
 function requireAdmin(token) {
-  const user = requireCurrentUser(token);
+  const user = requireReadyUser(token);
   if (user.role !== "admin") throw authError("admin_required", 403);
+  return user;
+}
+
+function requireReadyUser(token) {
+  const user = requireCurrentUser(token);
+  if (user.mustChangePassword) throw authError("password_change_required", 403);
   return user;
 }
 
@@ -325,6 +331,7 @@ module.exports = {
   bootstrapAdmin,
   login,
   requireCurrentUser,
+  requireReadyUser,
   requireAdmin,
   listOrganizationUsers,
   createTeacher,

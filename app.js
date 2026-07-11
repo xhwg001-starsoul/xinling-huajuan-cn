@@ -29,6 +29,7 @@ const saveTeacherButton = document.querySelector("#saveTeacherButton");
 const organizationForm = document.querySelector("#organizationForm");
 const saveOrganizationButton = document.querySelector("#saveOrganizationButton");
 const clearOrganizationButton = document.querySelector("#clearOrganizationButton");
+const organizationMessage = document.querySelector("#organizationMessage");
 const artworkInput = document.querySelector("#artworkInput");
 const dropZone = document.querySelector("#dropZone");
 const previewWrap = document.querySelector("#previewWrap");
@@ -55,11 +56,21 @@ const contentTypeSelect = document.querySelector("#contentType");
 const todayCount = document.querySelector("#todayCount");
 const totalCount = document.querySelector("#totalCount");
 const riskCount = document.querySelector("#riskCount");
+const riskStatCard = document.querySelector("#riskStatCard");
 const typeStatsList = document.querySelector("#typeStatsList");
 const recentRecordsBody = document.querySelector("#recentRecordsBody");
 const teacherFilterSelect = document.querySelector("#teacherFilterSelect");
 const refreshStatsButton = document.querySelector("#refreshStatsButton");
 const exportStatsButton = document.querySelector("#exportStatsButton");
+const exportStatsCsvButton = document.querySelector("#exportStatsCsvButton");
+const teacherFilterField = document.querySelector("#teacherFilterField");
+const usageDateFrom = document.querySelector("#usageDateFrom");
+const usageDateTo = document.querySelector("#usageDateTo");
+const usageContentTypeFilter = document.querySelector("#usageContentTypeFilter");
+const teacherStatsPanel = document.querySelector("#teacherStatsPanel");
+const teacherStatsList = document.querySelector("#teacherStatsList");
+const providerStatsList = document.querySelector("#providerStatsList");
+const providerStatsPanel = document.querySelector("#providerStatsPanel");
 const clearStatsButton = document.querySelector("#clearStatsButton");
 const clearCurrentTeacherStatsButton = document.querySelector("#clearCurrentTeacherStatsButton");
 const overviewOrganizationName = document.querySelector("#overviewOrganizationName");
@@ -122,6 +133,9 @@ let cnAuthMode = false;
 let cnHasAdmin = false;
 let currentCnUser = null;
 let cnUsers = [];
+let currentCnOrganization = null;
+let currentCnUsageSummary = null;
+let currentCnUsageRecords = [];
 
 const contentConfig = {
   心灵对话: { button: "生成心灵对话", title: "心灵对话", waiting: "正在生成心灵对话，请稍等。", done: "心灵对话已生成。" },
@@ -465,6 +479,15 @@ function renderReportMeta(meta = lastReportMeta) {
   if (organization.organizationName) {
     rows.push(["机构名称", organization.organizationName]);
   }
+  if (organization.organizationType) {
+    rows.push(["机构类型", organization.organizationType]);
+  }
+  if (organization.usageScenario) {
+    rows.push(["使用场景", organization.usageScenario]);
+  }
+  if (organization.reportSignature) {
+    rows.push(["报告署名", organization.reportSignature]);
+  }
   rows.push(["报告用途", "绘画表达观察与学校心理辅导参考"]);
   rows.push(["生成类型", contentType]);
   rows.push(["当前教师", getCurrentTeacher()]);
@@ -696,9 +719,9 @@ loginForm.addEventListener("submit", async (event) => {
   }
 });
 
-logoutButton.addEventListener("click", () => {
+logoutButton.addEventListener("click", async () => {
   if (getCurrentUser()) {
-    logoutUser();
+    await logoutUser();
     setStatus("请先登录后生成报告。", true);
     return;
   }
@@ -812,7 +835,7 @@ saveTeacherButton.addEventListener("click", () => saveCurrentTeacher(teacherAlia
 teacherAliasInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") saveCurrentTeacher(teacherAliasInput.value);
 });
-saveOrganizationButton.addEventListener("click", saveOrganizationProfile);
+saveOrganizationButton.addEventListener("click", () => saveOrganizationProfile());
 clearOrganizationButton.addEventListener("click", () => {
   if (confirm("确定要清空本浏览器中的机构信息吗？这不会影响教师身份和使用统计记录。")) {
     clearOrganizationProfile();
@@ -1154,6 +1177,15 @@ function exportUsageRecords() {
   URL.revokeObjectURL(url);
 }
 
+function exportUsageRecordsCsv() {
+  const records = filterRecordsByCurrentUser(getUsageRecords());
+  const lines = [["生成时间", "教师", "报告类型", "风险相关"].map(csvCell).join(",")];
+  for (const record of records) {
+    lines.push([record.createdAt, record.teacherAlias, record.contentType, record.isRiskRelated ? "是" : "否"].map(csvCell).join(","));
+  }
+  downloadBlobFile(`\uFEFF${lines.join("\r\n")}`, `xinling-usage-statistics-${exportDateStamp().replace(/-/g, "")}.csv`, "text/csv;charset=utf-8");
+}
+
 function markdownToHtml(markdown) {
   const lines = String(markdown || "").split(/\r?\n/);
   let html = "";
@@ -1240,7 +1272,7 @@ function buildReportExportData() {
   // 导出只读取当前页面中的报告，不写入 localStorage，避免保存敏感报告正文。
   return {
     title: "心灵画卷 · 绘画心理观察辅助报告",
-    organizationName: organization.organizationName,
+    organizationName: organization.organizationName || "未设置机构",
     organizationType: organization.organizationType,
     usageScenario: organization.usageScenario,
     reportSignature: organization.reportSignature,
@@ -1477,9 +1509,13 @@ resetButton.addEventListener("click", () => {
   document.querySelector("#uploadTitle").scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
-refreshStatsButton.addEventListener("click", renderUsageStats);
-teacherFilterSelect.addEventListener("change", renderUsageStats);
-exportStatsButton.addEventListener("click", exportUsageRecords);
+refreshStatsButton.addEventListener("click", () => renderUsageStats());
+teacherFilterSelect.addEventListener("change", () => renderUsageStats());
+usageDateFrom?.addEventListener("change", () => renderUsageStats());
+usageDateTo?.addEventListener("change", () => renderUsageStats());
+usageContentTypeFilter?.addEventListener("change", () => renderUsageStats());
+exportStatsButton.addEventListener("click", () => exportUsageRecords());
+exportStatsCsvButton?.addEventListener("click", () => exportUsageRecordsCsv());
 clearStatsButton.addEventListener("click", () => {
   if (!isAdmin()) return;
   if (confirm("确定要清空本浏览器中的所有使用统计吗？此操作不会删除学生资料或报告正文，因为系统本来就没有保存这些内容；但统计次数将无法恢复。")) {
@@ -1512,6 +1548,7 @@ function resetWorkspace() {
   dropZone.classList.remove("is-hidden");
   loadingCard.classList.add("is-hidden");
   reportCard.classList.add("is-hidden");
+  reportContent.replaceChildren();
   isSubmitting = false;
   analyzeButton.disabled = true;
   reportTitle.textContent = "房树人绘画心理观察辅助报告";
@@ -2104,6 +2141,12 @@ function cnAuthErrorMessage(code) {
     password_same_as_current: "新密码不能与当前密码相同。",
     password_change_required: "首次登录或密码被重置后，请先修改密码。",
     session_invalid: "登录状态已失效，请重新登录。",
+    organization_name_required: "机构名称不能为空。",
+    organization_not_found: "未找到当前账号所属机构。",
+    cn_organization_read_failed: "机构信息读取失败，请稍后重试。",
+    cn_organization_update_failed: "机构信息保存失败，请稍后重试。",
+    cn_usage_summary_failed: "使用统计读取失败，请稍后重试。",
+    cn_usage_records_failed: "使用记录读取失败，请稍后重试。",
   };
   return messages[code] || code || "大陆版账号服务暂时不可用。";
 }
@@ -2121,7 +2164,11 @@ function cnToken() {
 function clearCnSession() {
   sessionStorage.removeItem(cnSessionTokenKey);
   sessionStorage.removeItem(adminSettingsAccessKey);
+  resetCnUsageFilters();
   currentCnUser = null;
+  currentCnOrganization = null;
+  currentCnUsageSummary = null;
+  currentCnUsageRecords = [];
 }
 
 async function loadCnAuthStatus() {
@@ -2147,32 +2194,184 @@ async function loadCnCurrentUser() {
   }
   const data = await response.json().catch(() => ({}));
   currentCnUser = data.user || null;
+  if (currentCnUser) await loadCnOrganization().catch(() => { currentCnOrganization = null; });
   return currentCnUser;
 }
 
-function renderCnUsageStats() {
-  todayCount.textContent = "0";
-  totalCount.textContent = "0";
-  riskCount.textContent = "0";
-  overviewTotalCount.textContent = "0";
-  teacherFilterSelect.innerHTML = "";
-  const option = document.createElement("option");
-  option.value = getCurrentTeacher();
-  option.textContent = getCurrentTeacher();
-  teacherFilterSelect.appendChild(option);
-  typeStatsList.innerHTML = "";
-  for (const type of contentTypes) {
+async function loadCnOrganization() {
+  if (!getCurrentUser()) {
+    currentCnOrganization = null;
+    return null;
+  }
+  const data = await cnApi("/api/cn-organization");
+  currentCnOrganization = data.organization || null;
+  if (currentCnOrganization && currentCnUser) currentCnUser.organizationName = currentCnOrganization.name;
+  applyOrganizationProfileToUI();
+  clearOrganizationButton.classList.add("is-hidden");
+  return currentCnOrganization;
+}
+
+async function saveCnOrganizationProfile() {
+  if (!isAdmin()) throw new Error("admin_required");
+  const formData = new FormData(organizationForm);
+  const data = await cnApi("/api/cn-admin-organization", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: sanitizeText(formData.get("organizationName")),
+      organizationType: sanitizeText(formData.get("organizationType")),
+      usageScenario: sanitizeText(formData.get("usageScenario")),
+      reportSignature: sanitizeText(formData.get("reportSignature")),
+      note: String(formData.get("organizationNote") || "").trim().slice(0, 500),
+    }),
+  });
+  currentCnOrganization = data.organization;
+  if (currentCnUser) currentCnUser.organizationName = currentCnOrganization.name;
+  applyOrganizationProfileToUI();
+  clearOrganizationButton.classList.add("is-hidden");
+  organizationMessage.textContent = "机构信息已保存。";
+  organizationMessage.classList.remove("error-note");
+}
+
+function cnUsageQuery() {
+  const params = new URLSearchParams();
+  if (isAdmin() && teacherFilterSelect.value) params.set("userId", teacherFilterSelect.value);
+  if (usageDateFrom?.value) params.set("dateFrom", usageDateFrom.value);
+  if (usageDateTo?.value) params.set("dateTo", usageDateTo.value);
+  if (usageContentTypeFilter?.value) params.set("contentType", usageContentTypeFilter.value);
+  return params;
+}
+
+function resetCnUsageFilters() {
+  if (teacherFilterSelect) teacherFilterSelect.value = "";
+  if (usageDateFrom) usageDateFrom.value = "";
+  if (usageDateTo) usageDateTo.value = "";
+  if (usageContentTypeFilter) usageContentTypeFilter.value = "";
+}
+
+function renderCountList(container, entries, emptyText) {
+  container.innerHTML = "";
+  if (!entries.length) {
+    const row = document.createElement("div");
+    row.className = "type-row";
+    row.textContent = emptyText;
+    container.appendChild(row);
+    return;
+  }
+  for (const [labelText, count] of entries) {
     const row = document.createElement("div");
     row.className = "type-row";
     const label = document.createElement("span");
     const value = document.createElement("strong");
-    label.textContent = type;
-    value.textContent = "0";
+    label.textContent = labelText;
+    value.textContent = String(count || 0);
     row.append(label, value);
-    typeStatsList.appendChild(row);
+    container.appendChild(row);
   }
-  recentRecordsBody.innerHTML = '<tr><td colspan="4">大陆版数据库统计接口将在后续版本接入</td></tr>';
+}
+
+function usageModelLabel(record) {
+  return record.pipelineMode === "split"
+    ? `${record.visionProvider || "-"}/${record.visionModel || "-"} → ${record.textProvider || "-"}/${record.textModel || "-"}`
+    : `${record.singleProvider || "-"}/${record.singleModel || "-"}`;
+}
+
+async function renderCnUsageStats() {
+  if (!getCurrentUser() || getCurrentUser().mustChangePassword) return;
+  const query = cnUsageQuery();
+  const suffix = query.toString() ? `?${query}` : "";
+  try {
+    const [summaryData, recordsData] = await Promise.all([
+      cnApi(`/api/cn-usage-summary${suffix}`),
+      cnApi(`/api/cn-usage-records${suffix}${suffix ? "&" : "?"}limit=100`),
+    ]);
+    currentCnUsageSummary = summaryData.summary;
+    currentCnUsageRecords = Array.isArray(recordsData.records) ? recordsData.records : [];
+  } catch (error) {
+    recentRecordsBody.innerHTML = `<tr><td colspan="5">${escapeHtml(cnAuthErrorMessage(error.message))}</td></tr>`;
+    return;
+  }
+
+  const summary = currentCnUsageSummary || {};
+  todayCount.textContent = summary.todayCount || 0;
+  totalCount.textContent = summary.totalCount || 0;
+  riskCount.textContent = summary.riskRelatedCount || 0;
+  overviewTotalCount.textContent = summary.totalCount || 0;
+
+  renderCountList(typeStatsList, contentTypes.map((type) => [type, summary.contentTypeCounts?.[type] || 0]), "暂无报告类型统计");
+  renderCountList(providerStatsList, Object.entries(summary.providerCounts || {}), "暂无模型使用统计");
+
+  teacherStatsPanel?.classList.toggle("is-hidden", !isAdmin());
+  providerStatsPanel?.classList.toggle("is-hidden", !isAdmin());
+  riskStatCard?.classList.toggle("is-hidden", !isAdmin());
+  teacherFilterField?.classList.toggle("is-hidden", !isAdmin());
+  if (isAdmin()) {
+    const selectedUserId = teacherFilterSelect.value;
+    const teacherEntries = Object.entries(summary.teacherCounts || {});
+    renderCountList(teacherStatsList, teacherEntries.map(([, item]) => [`${item.displayName || item.username}（${item.username}）`, item.count]), "暂无教师使用统计");
+    if (!selectedUserId) {
+      teacherFilterSelect.innerHTML = '<option value="">全部教师</option>';
+      for (const [userId, item] of teacherEntries) {
+        const option = document.createElement("option");
+        option.value = userId;
+        option.textContent = `${item.displayName || item.username}（${item.username}）`;
+        teacherFilterSelect.appendChild(option);
+      }
+    }
+  } else {
+    teacherFilterSelect.innerHTML = `<option value="${escapeHtml(getCurrentUser().id)}">我的记录</option>`;
+  }
+
+  recentRecordsBody.innerHTML = "";
+  if (!currentCnUsageRecords.length) {
+    recentRecordsBody.innerHTML = '<tr><td colspan="5">暂无统计记录</td></tr>';
+  } else {
+    for (const record of currentCnUsageRecords.slice(0, 20)) {
+      const row = document.createElement("tr");
+      const values = [formatRecordTime(record.createdAt), record.teacherAlias || record.username, record.contentType, record.isRiskRelated ? "是" : "否", usageModelLabel(record)];
+      for (const value of values) {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        row.appendChild(cell);
+      }
+      recentRecordsBody.appendChild(row);
+    }
+  }
   applyOrganizationProfileToUI();
+  clearOrganizationButton.classList.add("is-hidden");
+}
+
+function exportCnUsageJson() {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    scope: isAdmin() ? "organization" : "self",
+    summary: currentCnUsageSummary,
+    records: currentCnUsageRecords,
+    note: "仅包含安全使用元数据，不包含学生信息、图片、背景资料、报告正文、密钥或 token。",
+  };
+  downloadBlobFile(JSON.stringify(payload, null, 2), `xinling-usage-statistics-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}.json`, "application/json;charset=utf-8");
+}
+
+function csvCell(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function exportCnUsageCsv() {
+  const headers = ["生成时间", "教师用户名", "教师显示名", "角色", "报告类型", "风险相关", "工作模式", "模型组合"];
+  const lines = [headers.map(csvCell).join(",")];
+  for (const record of currentCnUsageRecords) {
+    lines.push([
+      record.createdAt,
+      record.username,
+      record.teacherAlias,
+      record.userRole,
+      record.contentType,
+      record.isRiskRelated ? "是" : "否",
+      record.pipelineMode,
+      usageModelLabel(record),
+    ].map(csvCell).join(","));
+  }
+  downloadBlobFile(`\uFEFF${lines.join("\r\n")}`, `xinling-usage-statistics-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}.csv`, "text/csv;charset=utf-8");
 }
 
 function renderCnPermissionUI() {
@@ -2181,12 +2380,18 @@ function renderCnPermissionUI() {
   const passwordChangeRequired = Boolean(user?.mustChangePassword);
   accountSecurityPanel?.classList.toggle("is-hidden", !user || passwordChangeRequired);
   userManagementPanel.classList.toggle("is-hidden", !admin || passwordChangeRequired);
-  organizationSettingsPanel?.classList.add("is-hidden");
+  organizationSettingsPanel?.classList.toggle("is-hidden", !user || passwordChangeRequired);
   modelSettingsPanel.classList.toggle("is-hidden", !admin || passwordChangeRequired);
   if (!admin) sessionStorage.removeItem(adminSettingsAccessKey);
   teacherFilterSelect.disabled = true;
   clearStatsButton.classList.add("is-hidden");
   clearCurrentTeacherStatsButton.classList.add("is-hidden");
+  if (user && !passwordChangeRequired) {
+    for (const element of organizationForm.elements) element.disabled = !admin;
+    saveOrganizationButton.classList.toggle("is-hidden", !admin);
+    clearOrganizationButton.classList.add("is-hidden");
+    organizationMessage.textContent = admin ? "管理员可以修改本机构信息。" : "机构信息由管理员维护，教师账号仅可查看。";
+  }
   if (admin && !passwordChangeRequired) renderUserManagementPanel();
 }
 
@@ -2221,8 +2426,11 @@ async function loginCnAccount(username, password) {
     body: JSON.stringify({ username, password }),
   });
   const data = await readCnResponse(response, "cn_login_failed");
+  resetCnUsageFilters();
+  resetWorkspace();
   sessionStorage.setItem(cnSessionTokenKey, data.token);
   currentCnUser = data.user;
+  await loadCnOrganization().catch(() => { currentCnOrganization = null; });
   return data.user;
 }
 
@@ -2414,11 +2622,11 @@ function configureCnAuth() {
   };
   getOrganizationProfile = function getCnOrganizationProfile() {
     return {
-      organizationName: currentCnUser?.organizationName || "",
-      organizationType: "",
-      usageScenario: "",
-      reportSignature: "",
-      organizationNote: "",
+      organizationName: currentCnOrganization?.name || currentCnUser?.organizationName || "",
+      organizationType: currentCnOrganization?.organizationType || "",
+      usageScenario: currentCnOrganization?.usageScenario || "",
+      reportSignature: currentCnOrganization?.reportSignature || "",
+      organizationNote: currentCnOrganization?.note || "",
     };
   };
   createInitialAdmin = async function createInitialCnAdmin(formData) {
@@ -2465,12 +2673,16 @@ function configureCnAuth() {
   };
   logoutUser = async function logoutCnUser() {
     const token = cnToken();
+    resetWorkspace();
     try {
       if (token) {
         await fetch("/api/cn-logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       }
+    } catch {
+      // 本地会话仍必须清除，避免网络异常时上一账号的工作内容留在页面中。
     } finally {
       clearCnSession();
+      resetWorkspace();
       renderCurrentUserInfo();
       renderLoginPanel();
       showAnalysisView();
@@ -2480,9 +2692,20 @@ function configureCnAuth() {
   renderLoginPanel = renderCnLoginPanel;
   renderPermissionUI = renderCnPermissionUI;
   renderUserManagementPanel = renderCnUserManagementPanel;
-  getUsageRecords = function getCnUsageRecords() { return []; };
-  saveUsageRecord = async function saveCnUsageRecord() {};
+  getUsageRecords = function getCnUsageRecords() { return currentCnUsageRecords; };
+  saveUsageRecord = async function refreshCnUsageAfterReport() { await renderCnUsageStats(); };
   renderUsageStats = renderCnUsageStats;
+  saveOrganizationProfile = async function saveCnOrganization() {
+    try {
+      await saveCnOrganizationProfile();
+    } catch (error) {
+      organizationMessage.textContent = cnAuthErrorMessage(error.message);
+      organizationMessage.classList.add("error-note");
+    }
+  };
+  clearOrganizationProfile = function keepRequiredCnOrganization() {};
+  exportUsageRecords = exportCnUsageJson;
+  exportUsageRecordsCsv = exportCnUsageCsv;
   changeCurrentUserPassword = changeCnCurrentPassword;
   createTeacherUser = createCnTeacher;
   updateUserStatus = updateCnUserStatus;

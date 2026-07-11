@@ -32,6 +32,10 @@ const apiHandlers = {
   "/api/cn-admin-update-user-status": require("./api/cn-admin-update-user-status"),
   "/api/cn-admin-reset-password": require("./api/cn-admin-reset-password"),
   "/api/cn-change-password": require("./api/cn-change-password"),
+  "/api/cn-organization": require("./api/cn-organization"),
+  "/api/cn-admin-organization": require("./api/cn-admin-organization"),
+  "/api/cn-usage-summary": require("./api/cn-usage-summary"),
+  "/api/cn-usage-records": require("./api/cn-usage-records"),
 };
 
 const mimeTypes = {

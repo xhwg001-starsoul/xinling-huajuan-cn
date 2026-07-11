@@ -562,8 +562,9 @@
               <button class="ghost-button" id="saveOrganizationButton" type="button">保存机构信息</button>
               <button class="ghost-button danger-button" id="clearOrganizationButton" type="button">清空机构信息</button>
             </div>
+            <p class="form-hint" id="organizationMessage"></p>
             <p class="dashboard-note">
-              机构信息仅用于本浏览器中的页面显示、报告抬头和本机工作台配置，不代表真实机构认证。请勿填写统一社会信用代码、详细地址、负责人身份证号、手机号等敏感信息。
+              机构信息保存在大陆版账号数据库中，用于页面显示、报告抬头和教师工作台。请勿填写统一社会信用代码、详细地址、负责人身份证号、手机号等敏感信息。
             </p>
           </section>
 
@@ -666,22 +667,42 @@
               <span>累计生成次数</span>
               <strong id="totalCount">0</strong>
             </article>
-            <article class="stat-card">
+            <article class="stat-card" id="riskStatCard">
               <span>风险提示与转介建议生成次数</span>
               <strong id="riskCount">0</strong>
             </article>
           </section>
 
-          <section class="dashboard-panel">
+          <section class="dashboard-panel" id="usageFilterPanel">
             <div class="panel-head">
-              <p class="section-kicker">教师筛选</p>
-              <h2>按教师代号查看本机统计</h2>
+              <p class="section-kicker">统计筛选</p>
+              <h2>筛选安全使用记录</h2>
             </div>
-            <div class="field dashboard-filter">
-              <label for="teacherFilterSelect">筛选教师</label>
-              <select id="teacherFilterSelect">
-                <option value="全部教师">全部教师</option>
-              </select>
+            <div class="organization-form">
+              <div class="field" id="teacherFilterField">
+                <label for="teacherFilterSelect">筛选教师</label>
+                <select id="teacherFilterSelect"><option value="">全部教师</option></select>
+              </div>
+              <div class="field">
+                <label for="usageDateFrom">开始日期</label>
+                <input id="usageDateFrom" type="date" />
+              </div>
+              <div class="field">
+                <label for="usageDateTo">结束日期</label>
+                <input id="usageDateTo" type="date" />
+              </div>
+              <div class="field">
+                <label for="usageContentTypeFilter">报告类型</label>
+                <select id="usageContentTypeFilter">
+                  <option value="">全部类型</option>
+                  <option>心灵对话</option>
+                  <option>教师专业观察报告</option>
+                  <option>后续访谈问题</option>
+                  <option>家校沟通建议</option>
+                  <option>辅导记录初稿</option>
+                  <option>风险提示与转介建议</option>
+                </select>
+              </div>
             </div>
           </section>
 
@@ -691,6 +712,16 @@
               <h2>各内容类型生成次数</h2>
             </div>
             <div class="type-list" id="typeStatsList"></div>
+          </section>
+
+          <section class="dashboard-panel" id="teacherStatsPanel">
+            <div class="panel-head"><p class="section-kicker">教师统计</p><h2>各教师使用次数</h2></div>
+            <div class="type-list" id="teacherStatsList"></div>
+          </section>
+
+          <section class="dashboard-panel" id="providerStatsPanel">
+            <div class="panel-head"><p class="section-kicker">模型统计</p><h2>模型组合使用次数</h2></div>
+            <div class="type-list" id="providerStatsList"></div>
           </section>
 
           <section class="dashboard-panel">
@@ -706,10 +737,11 @@
                     <th>教师代号</th>
                     <th>生成内容类型</th>
                     <th>是否风险相关</th>
+                    <th>模型组合</th>
                   </tr>
                 </thead>
                 <tbody id="recentRecordsBody">
-                  <tr><td colspan="4">暂无统计记录</td></tr>
+                  <tr><td colspan="5">暂无统计记录</td></tr>
                 </tbody>
               </table>
             </div>
@@ -718,12 +750,13 @@
           <section class="dashboard-actions">
             <button class="ghost-button" id="refreshStatsButton" type="button">刷新统计</button>
             <button class="ghost-button" id="exportStatsButton" type="button">导出统计 JSON</button>
+            <button class="ghost-button" id="exportStatsCsvButton" type="button">导出统计 CSV</button>
             <button class="ghost-button danger-button" id="clearStatsButton" type="button">清空本机统计记录</button>
             <button class="ghost-button danger-button" id="clearCurrentTeacherStatsButton" type="button">清空当前教师统计</button>
           </section>
 
           <p class="dashboard-note">
-            当前工作台仅统计本浏览器中的安全使用元数据，不保存学生图片、姓名、背景资料或报告正文。心灵画卷生成内容仅供绘画表达观察、访谈准备和学校心理辅导参考，不构成心理诊断。如发现自伤、自杀、严重暴力、长期失眠、明显拒学等风险线索，应及时启动人工评估、联系监护人并寻求专业资源支持。
+            当前工作台只读取 SQLite 中的安全使用元数据，不保存学生图片、姓名、背景资料、视觉观察正文或报告正文。心灵画卷生成内容仅供绘画表达观察、访谈准备和学校心理辅导参考，不构成心理诊断。
           </p>
         </section>
       </section>

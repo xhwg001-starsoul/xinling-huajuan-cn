@@ -4,6 +4,7 @@ const { readJsonBody, requireActiveProfileIfConfigured } = require("./_supabase"
 const { getBearerToken } = require("./_http");
 const { getRuntimeMode } = require("../config/runtimeMode");
 const { requireCurrentUser } = require("../services/authService");
+const { recordUsage } = require("../services/usageService");
 
 function accessCodeFrom(req, body) {
   return req.headers["x-access-code"] || body.accessCode || "";
@@ -37,11 +38,12 @@ async function handler(req, res) {
   }
 
   const { image, profile = {} } = body;
+  const runtime = getRuntimeMode();
+  let authenticatedCnUser = null;
   try {
-    const runtime = getRuntimeMode();
     if (runtime.usesCnAuth) {
-      const user = requireCurrentUser(getBearerToken(req));
-      if (user.mustChangePassword) {
+      authenticatedCnUser = requireCurrentUser(getBearerToken(req));
+      if (authenticatedCnUser.mustChangePassword) {
         return sendJson(res, 403, { error: "password_change_required" });
       }
     } else {
@@ -73,6 +75,17 @@ async function handler(req, res) {
       contentType: profile.contentType || profile.desiredHelp || profile.reportMode,
       modelConfig,
     });
+    if (runtime.usesCnAuth && authenticatedCnUser) {
+      try {
+        recordUsage({
+          user: authenticatedCnUser,
+          contentType: profile.contentType || profile.desiredHelp || profile.reportMode,
+          modelConfig,
+        });
+      } catch {
+        console.warn("usage_record_write_failed");
+      }
+    }
     return sendJson(res, 200, result);
   } catch (error) {
     const message = safeErrorMessage(error);
