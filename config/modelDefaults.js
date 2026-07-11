@@ -6,15 +6,15 @@ function valueFromEnv(name, fallback) {
 
 function getDefaultModelConfig() {
   return {
-    pipelineMode: valueFromEnv("MODEL_PIPELINE", "single"),
+    pipelineMode: valueFromEnv("MODEL_PIPELINE", "split"),
     singleProvider: valueFromEnv("SINGLE_PROVIDER", "openai"),
     singleModel: valueFromEnv("SINGLE_MODEL", process.env.OPENAI_MODEL || OPENAI_DEFAULT_MODEL),
 
-    visionProvider: valueFromEnv("VISION_PROVIDER", "openai"),
-    visionModel: valueFromEnv("VISION_MODEL", process.env.OPENAI_VISION_MODEL || OPENAI_DEFAULT_MODEL),
+    visionProvider: valueFromEnv("VISION_PROVIDER", "qwen"),
+    visionModel: valueFromEnv("VISION_MODEL", process.env.QWEN_VISION_MODEL || "qwen3.7-plus"),
 
-    textProvider: valueFromEnv("TEXT_PROVIDER", "openai"),
-    textModel: valueFromEnv("TEXT_MODEL", process.env.OPENAI_TEXT_MODEL || OPENAI_DEFAULT_MODEL),
+    textProvider: valueFromEnv("TEXT_PROVIDER", "deepseek"),
+    textModel: valueFromEnv("TEXT_MODEL", process.env.DEEPSEEK_TEXT_MODEL || "deepseek-chat"),
   };
 }
 

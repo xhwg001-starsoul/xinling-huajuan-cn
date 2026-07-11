@@ -110,6 +110,11 @@ const modelSettingsActions = document.querySelector("#modelSettingsActions");
 const reloadModelSettingsButton = document.querySelector("#reloadModelSettingsButton");
 const saveModelSettingsButton = document.querySelector("#saveModelSettingsButton");
 const modelSettingsMessage = document.querySelector("#modelSettingsMessage");
+const modelSettingsMeta = document.querySelector("#modelSettingsMeta");
+const modelProviderStatusList = document.querySelector("#modelProviderStatusList");
+const testVisionModelButton = document.querySelector("#testVisionModelButton");
+const testTextModelButton = document.querySelector("#testTextModelButton");
+const testModelPipelineButton = document.querySelector("#testModelPipelineButton");
 const internalEntryButtons = document.querySelectorAll(".internal-entry-button");
 const backPublicButton = document.querySelector("#backPublicButton");
 
@@ -544,7 +549,7 @@ function renderPermissionUI() {
 }
 
 function isModelSettingsUnlocked() {
-  return sessionStorage.getItem(adminSettingsAccessKey) === "true";
+  return isAdmin();
 }
 
 function setModelSettingsMessage(message, isError = false) {
@@ -596,6 +601,63 @@ function renderModelSettingsPanel() {
   } else {
     setModelSettingsMessage("管理员设置由设置码临时保护。");
   }
+}
+
+async function loadModelProviderStatus() {
+  if (!modelProviderStatusList || !isAdmin()) return;
+  const data = await cnApi("/api/cn-admin-model-provider-status");
+  modelProviderStatusList.innerHTML = "";
+  const labels = { qwen: "Qwen API", deepseek: "DeepSeek API", openai: "OpenAI API", doubao: "豆包 API" };
+  for (const key of ["qwen", "deepseek", "openai", "doubao"]) {
+    const row = document.createElement("div");
+    row.className = "type-row";
+    const label = document.createElement("span");
+    const value = document.createElement("strong");
+    label.textContent = labels[key] || key;
+    value.textContent = data.providers?.[key]?.configured ? "已配置" : "未配置";
+    row.append(label, value);
+    modelProviderStatusList.appendChild(row);
+  }
+}
+
+loadModelSettings = async function loadCnSqliteModelSettings() {
+  const data = await cnApi("/api/cn-model-settings");
+  applyModelSettingsToForm(data.settings);
+  if (modelSettingsMeta) {
+    const updatedAt = data.settings?.updatedAt ? formatRecordTime(data.settings.updatedAt) : "未记录";
+    const updatedBy = data.settings?.updatedByDisplayName || data.settings?.updatedBy || "系统默认";
+    modelSettingsMeta.textContent = `当前更新时间：${updatedAt}；当前修改管理员：${updatedBy}`;
+  }
+  setModelSettingsMessage("已读取 SQLite 中的模型设置。");
+  await loadModelProviderStatus();
+};
+
+renderModelSettingsPanel = function renderCnSqliteModelSettingsPanel() {
+  if (!modelSettingsPanel) return;
+  const unlocked = isModelSettingsUnlocked();
+  modelSettingsLock?.classList.add("is-hidden");
+  modelSettingsUnlockedIntro.classList.toggle("is-hidden", !unlocked);
+  modelSettingsForm.classList.toggle("is-hidden", !unlocked);
+  modelSettingsActions.classList.toggle("is-hidden", !unlocked);
+  if (unlocked) {
+    loadModelSettings().catch((error) => setModelSettingsMessage(error.message || "读取模型设置失败。", true));
+  } else {
+    setModelSettingsMessage("模型设置仅管理员可见。");
+  }
+};
+
+function describeModelTestResult(result = {}) {
+  if (result.overallStatus) {
+    return `组合测试：${result.overallStatus}；视觉：${result.visionStatus}；文本：${result.textStatus}；耗时 ${result.durationMs || 0}ms`;
+  }
+  if (result.success) return `${result.provider || "-"} / ${result.model || "-"}：连接测试通过；耗时 ${result.durationMs || 0}ms`;
+  return `${result.provider || "-"} / ${result.model || "-"}：连接测试失败：${result.error || "unknown_error"}；耗时 ${result.durationMs || 0}ms`;
+}
+
+async function runModelTest(path) {
+  const data = await cnApi(path, { method: "POST" });
+  const result = data.result || {};
+  setModelSettingsMessage(describeModelTestResult(result), Boolean(result.success === false || result.overallStatus === "failed"));
 }
 
 function renderUserManagementPanel() {
@@ -789,7 +851,7 @@ userLoginForm.addEventListener("submit", async (event) => {
 createTeacherButton.addEventListener("click", async () => {
   try {
     await createTeacherUser(new FormData(createTeacherForm));
-    userManagementMessage.textContent = "教师账号已创建。请安全地将用户名和临时密码交给教师，教师首次登录后需要修改密码。";
+    userManagementMessage.textContent = "教师账号已创建。请将用户名和密码安全地交给教师。教师可登录后在工作台自行修改密码。";
     userManagementMessage.classList.remove("error-note");
   } catch (error) {
     userManagementMessage.textContent = error.message || "创建教师账号失败。";
@@ -862,6 +924,12 @@ verifyModelSettingsButton.addEventListener("click", async () => {
     setModelSettingsMessage(error.message || "管理员设置码验证失败。", true);
   }
 });
+verifyModelSettingsButton?.addEventListener("click", (event) => {
+  if (!cnAuthMode) return;
+  event.stopImmediatePropagation();
+  setModelSettingsMessage("大陆版账号模式下，已登录管理员可直接管理模型设置。");
+  renderModelSettingsPanel();
+}, true);
 reloadModelSettingsButton.addEventListener("click", () => {
   loadModelSettings().catch((error) => setModelSettingsMessage(error.message || "读取设置失败。", true));
 });
@@ -890,6 +958,35 @@ saveModelSettingsButton.addEventListener("click", async () => {
     setModelSettingsMessage(error.message || "保存设置失败。", true);
   }
 });
+reloadModelSettingsButton.addEventListener("click", (event) => {
+  if (!cnAuthMode) return;
+  event.stopImmediatePropagation();
+  loadModelSettings().catch((error) => setModelSettingsMessage(error.message || "读取模型设置失败。", true));
+}, true);
+saveModelSettingsButton.addEventListener("click", async (event) => {
+  if (!cnAuthMode) return;
+  event.stopImmediatePropagation();
+  try {
+    const data = await cnApi("/api/cn-admin-model-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ settings: modelSettingsFromForm() }),
+    });
+    applyModelSettingsToForm(data.settings);
+    if (modelSettingsMeta) {
+      const updatedAt = data.settings?.updatedAt ? formatRecordTime(data.settings.updatedAt) : "未记录";
+      const updatedBy = data.settings?.updatedByDisplayName || data.settings?.updatedBy || "系统默认";
+      modelSettingsMeta.textContent = `当前更新时间：${updatedAt}；当前修改管理员：${updatedBy}`;
+    }
+    setModelSettingsMessage("模型设置已保存到 SQLite。此处不保存任何 API Key。");
+    await loadModelProviderStatus();
+  } catch (error) {
+    setModelSettingsMessage(error.message || "保存模型设置失败。", true);
+  }
+}, true);
+testVisionModelButton?.addEventListener("click", () => runModelTest("/api/cn-admin-test-vision-model"));
+testTextModelButton?.addEventListener("click", () => runModelTest("/api/cn-admin-test-text-model"));
+testModelPipelineButton?.addEventListener("click", () => runModelTest("/api/cn-admin-test-model-pipeline"));
 
 function setStatus(message, isError = false) {
   formHint.textContent = message;
@@ -2277,7 +2374,7 @@ function usageModelLabel(record) {
 }
 
 async function renderCnUsageStats() {
-  if (!getCurrentUser() || getCurrentUser().mustChangePassword) return;
+  if (!getCurrentUser()) return;
   const query = cnUsageQuery();
   const suffix = query.toString() ? `?${query}` : "";
   try {
@@ -2377,11 +2474,11 @@ function exportCnUsageCsv() {
 function renderCnPermissionUI() {
   const user = getCurrentUser();
   const admin = isAdmin(user);
-  const passwordChangeRequired = Boolean(user?.mustChangePassword);
-  accountSecurityPanel?.classList.toggle("is-hidden", !user || passwordChangeRequired);
-  userManagementPanel.classList.toggle("is-hidden", !admin || passwordChangeRequired);
-  organizationSettingsPanel?.classList.toggle("is-hidden", !user || passwordChangeRequired);
-  modelSettingsPanel.classList.toggle("is-hidden", !admin || passwordChangeRequired);
+  const passwordChangeRequired = false;
+  accountSecurityPanel?.classList.toggle("is-hidden", !user);
+  userManagementPanel.classList.toggle("is-hidden", !admin);
+  organizationSettingsPanel?.classList.toggle("is-hidden", !user);
+  modelSettingsPanel.classList.toggle("is-hidden", !admin);
   if (!admin) sessionStorage.removeItem(adminSettingsAccessKey);
   teacherFilterSelect.disabled = true;
   clearStatsButton.classList.add("is-hidden");
@@ -2397,7 +2494,7 @@ function renderCnPermissionUI() {
 
 function renderCnLoginPanel() {
   const user = getCurrentUser();
-  const passwordChangeRequired = Boolean(user?.mustChangePassword);
+  const passwordChangeRequired = false;
   accountPanel.classList.toggle("is-hidden", Boolean(user));
   passwordChangeGate?.classList.toggle("is-hidden", !passwordChangeRequired);
   initialAdminEntry.classList.toggle("is-hidden", Boolean(user) || cnHasAdmin);
@@ -2450,7 +2547,7 @@ async function fetchCnUsers() {
 }
 
 async function renderCnUserManagementPanel() {
-  if (!isAdmin() || getCurrentUser()?.mustChangePassword) {
+  if (!isAdmin()) {
     userManagementPanel.classList.add("is-hidden");
     return;
   }
@@ -2482,6 +2579,7 @@ async function renderCnUserManagementPanel() {
       user.createdAt ? formatRecordTime(user.createdAt) : "—",
       user.lastLoginAt ? formatRecordTime(user.lastLoginAt) : "从未登录",
     ];
+    values.splice(4, 1);
     for (const value of values) {
       const cell = document.createElement("td");
       cell.textContent = value;
@@ -2599,10 +2697,6 @@ function configureCnAuth() {
     return user?.role === "teacher";
   };
   requireLogin = function requireCnLogin(message = "请先登录后使用心灵画卷。") {
-    if (getCurrentUser()?.mustChangePassword) {
-      renderLoginPanel();
-      return false;
-    }
     if (getCurrentUser()) return true;
     setStatus(message, true);
     renderLoginPanel();
@@ -2713,7 +2807,7 @@ function configureCnAuth() {
 
   const baseShowAnalysisView = showAnalysisView;
   showAnalysisView = function showCnAnalysisView() {
-    if (!getCurrentUser() || getCurrentUser().mustChangePassword) {
+    if (!getCurrentUser()) {
       analysisView.classList.add("is-hidden");
       dashboardView.classList.add("is-hidden");
       return;

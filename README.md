@@ -158,3 +158,14 @@ DOMESTIC_DATABASE_URL
 - 不适合直接公开大规模使用
 
 正式在中国大陆上线前，应完成备案、服务器部署、安全加固、隐私合规、学校授权流程、模型供应商合规评估和数据存储方案确认。
+## v0.8-cn-system-settings：系统模型配置中心
+
+- 大陆版模型配置已迁移到 SQLite，表为 `system_model_settings`，按 `organization_id` 保存当前机构的一份模型配置。
+- 旧 `data/model-settings.local.json` 仅用于一次性兼容迁移：如果 SQLite 中已有配置，不再读取 JSON；如果 SQLite 缺失配置，会只导入 provider、model、pipelineMode 等安全字段。
+- 只有已登录 `admin` 可以读取和修改模型配置；普通 `teacher` 看不到模型设置入口，直接调用管理员 API 会返回 403。
+- 模型 API Key 不保存到 SQLite、前端、localStorage 或 JSON 文件，只能放在 `.env.local` 或服务器环境变量中。
+- `ADMIN_SETTINGS_CODE` 已退出大陆版正式账号主流程，相关旧 API 仅保留为 legacy 参考。
+- 教师不再被强制要求首次登录修改密码；管理员创建或重置教师密码后，教师可直接登录使用系统，并可在工作台主动修改自己的密码。
+- 用户主动修改密码仍需输入当前密码，新密码至少 8 位且不能与当前密码相同；修改成功后该用户所有 session 会失效，需要重新登录。
+- 模型配置状态只显示 Qwen、DeepSeek、OpenAI、豆包 API 是否已配置，不显示 Key 内容、长度、前后缀或环境变量列表。
+- 模型连接测试不使用学生图片、学生资料、完整 Prompt 或正式报告内容，也不会写入 `usage_records`。

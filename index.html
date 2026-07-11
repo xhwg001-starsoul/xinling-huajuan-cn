@@ -588,6 +588,7 @@
             </div>
 
             <div class="is-hidden" id="modelSettingsUnlockedIntro">
+              <p class="form-hint" id="modelSettingsMeta"></p>
               <p class="form-hint">此处只配置模型供应商和模型名称，不保存 API Key。API Key 必须在服务器环境变量中配置。</p>
             </div>
 
@@ -638,6 +639,10 @@
               </div>
             </form>
             <div class="dashboard-actions is-hidden" id="modelSettingsActions">
+              <div class="type-stats-list" id="modelProviderStatusList"></div>
+              <button class="ghost-button" id="testVisionModelButton" type="button">测试视觉模型</button>
+              <button class="ghost-button" id="testTextModelButton" type="button">测试文本模型</button>
+              <button class="ghost-button" id="testModelPipelineButton" type="button">测试当前模型组合</button>
               <button class="ghost-button" id="reloadModelSettingsButton" type="button">重新读取设置</button>
               <button class="ghost-button" id="saveModelSettingsButton" type="button">保存设置</button>
             </div>

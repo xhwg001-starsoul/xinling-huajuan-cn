@@ -1,5 +1,5 @@
 const { generateAnalysisWithModelRouter } = require("../services/modelRouter");
-const { getModelSettings } = require("../services/modelSettingsStore");
+const { getOrganizationModelSettings } = require("../services/systemModelSettingsService");
 const { readJsonBody, requireActiveProfileIfConfigured } = require("./_supabase");
 const { getBearerToken } = require("./_http");
 const { getRuntimeMode } = require("../config/runtimeMode");
@@ -43,9 +43,6 @@ async function handler(req, res) {
   try {
     if (runtime.usesCnAuth) {
       authenticatedCnUser = requireCurrentUser(getBearerToken(req));
-      if (authenticatedCnUser.mustChangePassword) {
-        return sendJson(res, 403, { error: "password_change_required" });
-      }
     } else {
       if (!verifyAccessCode(accessCodeFrom(req, body))) {
         return sendJson(res, 401, { error: "invalid_access_code" });
@@ -68,7 +65,9 @@ async function handler(req, res) {
   }
 
   try {
-    const modelConfig = body.modelConfig || (await getModelSettings());
+    const modelConfig = runtime.usesCnAuth && authenticatedCnUser
+      ? getOrganizationModelSettings(authenticatedCnUser.organizationId)
+      : body.modelConfig || {};
     const result = await generateAnalysisWithModelRouter({
       images: [image],
       userInputs: profile,

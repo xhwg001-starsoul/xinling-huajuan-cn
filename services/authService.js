@@ -71,7 +71,7 @@ function publicUser(row) {
     organizationId: row.organization_id,
     organizationName: row.organization_name || "",
     isActive: row.is_active !== 0,
-    mustChangePassword: row.must_change_password === 1,
+    mustChangePassword: false,
   };
 }
 
@@ -210,9 +210,7 @@ function requireAdmin(token) {
 }
 
 function requireReadyUser(token) {
-  const user = requireCurrentUser(token);
-  if (user.mustChangePassword) throw authError("password_change_required", 403);
-  return user;
+  return requireCurrentUser(token);
 }
 
 function listOrganizationUsers(token) {
@@ -243,7 +241,7 @@ async function createTeacher({ token, username, displayName, temporaryPassword }
       INSERT INTO users (
         id, organization_id, username, display_name, role, password_hash, is_active,
         must_change_password, password_updated_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, 'teacher', ?, 1, 1, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, 'teacher', ?, 1, 0, ?, ?, ?)
     `).run(userId, admin.organizationId, safeUsername, safeDisplayName, passwordHash, now, now, now);
   } catch (error) {
     if (String(error?.code || "").includes("SQLITE_CONSTRAINT_UNIQUE")) {
@@ -287,7 +285,7 @@ async function resetTeacherPassword({ token, userId, newTemporaryPassword }) {
   db.transaction(() => {
     db.prepare(`
       UPDATE users
-      SET password_hash = ?, must_change_password = 1, password_updated_at = ?, updated_at = ?
+      SET password_hash = ?, must_change_password = 0, password_updated_at = ?, updated_at = ?
       WHERE id = ?
     `).run(passwordHash, now, now, target.id);
     db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target.id);

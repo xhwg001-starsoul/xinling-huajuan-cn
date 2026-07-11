@@ -72,6 +72,23 @@ function initializeSchema(db) {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS system_model_settings (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL UNIQUE,
+      pipeline_mode TEXT NOT NULL CHECK (pipeline_mode IN ('single', 'split')),
+      single_provider TEXT NOT NULL DEFAULT 'openai',
+      single_model TEXT NOT NULL DEFAULT '',
+      vision_provider TEXT NOT NULL DEFAULT 'qwen',
+      vision_model TEXT NOT NULL DEFAULT '',
+      text_provider TEXT NOT NULL DEFAULT 'deepseek',
+      text_model TEXT NOT NULL DEFAULT '',
+      updated_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+      FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+    );
+
   `);
 }
 
@@ -107,6 +124,18 @@ function runMigrations(db) {
   ensureColumn(db, "usage_records", "single_provider", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, "usage_records", "single_model", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, "usage_records", "created_at", "TEXT");
+  ensureColumn(db, "system_model_settings", "organization_id", "TEXT");
+  ensureColumn(db, "system_model_settings", "pipeline_mode", "TEXT NOT NULL DEFAULT 'split'");
+  ensureColumn(db, "system_model_settings", "single_provider", "TEXT NOT NULL DEFAULT 'openai'");
+  ensureColumn(db, "system_model_settings", "single_model", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, "system_model_settings", "vision_provider", "TEXT NOT NULL DEFAULT 'qwen'");
+  ensureColumn(db, "system_model_settings", "vision_model", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, "system_model_settings", "text_provider", "TEXT NOT NULL DEFAULT 'deepseek'");
+  ensureColumn(db, "system_model_settings", "text_model", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, "system_model_settings", "updated_by", "TEXT");
+  ensureColumn(db, "system_model_settings", "created_at", "TEXT");
+  ensureColumn(db, "system_model_settings", "updated_at", "TEXT");
+  db.prepare("UPDATE users SET must_change_password = 0 WHERE must_change_password = 1").run();
   db.prepare("UPDATE users SET updated_at = COALESCE(updated_at, created_at)").run();
   db.prepare("UPDATE organizations SET updated_at = COALESCE(updated_at, created_at)").run();
   db.exec(`
@@ -114,6 +143,7 @@ function runMigrations(db) {
     CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
     CREATE INDEX IF NOT EXISTS usage_records_org_created_idx ON usage_records(organization_id, created_at);
     CREATE INDEX IF NOT EXISTS usage_records_user_created_idx ON usage_records(user_id, created_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS system_model_settings_org_idx ON system_model_settings(organization_id);
   `);
 }
 
