@@ -7,6 +7,7 @@ function getRuntimeMode() {
   const configuredAuthProvider = String(process.env.AUTH_PROVIDER || "").trim().toLowerCase();
   const authProvider = configuredAuthProvider || (hasSupabaseEnv() ? "supabase" : "cn-dev");
   const settingsProvider = String(process.env.SETTINGS_PROVIDER || "file").trim().toLowerCase();
+  const usesCnAuth = appRegion === "cn" || authProvider === "cn-dev" || !hasSupabaseEnv();
 
   return {
     appRegion,
@@ -14,6 +15,7 @@ function getRuntimeMode() {
     settingsProvider,
     isCnDev: appRegion === "cn" && authProvider === "cn-dev",
     hasSupabaseEnv: hasSupabaseEnv(),
+    usesCnAuth,
   };
 }
 

@@ -22,6 +22,11 @@ const apiHandlers = {
   "/api/admin-reset-password": require("./api/admin-reset-password"),
   "/api/verify-admin-settings": require("./api/verify-admin-settings").handler,
   "/api/model-settings": require("./api/model-settings"),
+  "/api/cn-bootstrap-admin": require("./api/cn-bootstrap-admin"),
+  "/api/cn-login": require("./api/cn-login"),
+  "/api/cn-current-user": require("./api/cn-current-user"),
+  "/api/cn-logout": require("./api/cn-logout"),
+  "/api/cn-auth-status": require("./api/cn-auth-status"),
 };
 
 const mimeTypes = {
@@ -46,6 +51,8 @@ function logEnvironmentStatus() {
     "AUTH_PROVIDER",
     "SETTINGS_PROVIDER",
     "ADMIN_SETTINGS_CODE",
+    "CN_ADMIN_INIT_CODE",
+    "CN_SESSION_SECRET",
   ];
 
   console.log("环境变量检查：");

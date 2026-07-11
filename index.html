@@ -135,14 +135,14 @@
 
         <section class="account-panel" id="accountPanel">
           <div>
-            <p class="section-kicker">本机演示账号</p>
-            <h2 id="accountPanelTitle">请先登录后使用心灵画卷</h2>
-            <p class="account-note">当前账号系统为本机演示版，仅用于学校内部试用流程和权限结构演示。账号信息保存在本浏览器中，不等同于正式云端账号系统。正式上线前应升级为后端认证和数据库权限管理。</p>
+            <p class="section-kicker">大陆版账号</p>
+            <h2 id="accountPanelTitle">大陆版登录</h2>
+            <p class="account-note">内部访问码验证通过后，请使用机构管理员或教师账号登录。登录状态仅保留在本次浏览器会话中。</p>
           </div>
 
           <div class="deployment-entry" id="initialAdminEntry">
             <button class="ghost-button" id="toggleInitialAdminButton" type="button">首次部署？初始化管理员</button>
-            <p class="form-hint">日常使用请直接登录账号。初始化入口仅供系统部署者或机构负责人第一次创建云端管理员时使用。</p>
+            <p class="form-hint">初始化入口仅在系统尚未创建管理员时显示，供部署者或机构负责人首次使用。</p>
           </div>
 
           <form class="account-form is-hidden" id="initialAdminForm">
@@ -150,7 +150,7 @@
               <label for="adminInitCode">初始化码</label>
               <input id="adminInitCode" name="initCode" type="password" autocomplete="one-time-code" placeholder="请输入初始化码" />
             </div>
-            <p class="form-hint">首次使用，请创建本机管理员账号。</p>
+            <p class="form-hint">首次使用，请创建大陆版管理员账号。初始化码和密码不会保存在浏览器中。</p>
             <div class="field">
               <label for="initialAdminUsername">管理员用户名</label>
               <input id="initialAdminUsername" name="username" autocomplete="username" placeholder="例如 admin" />
@@ -171,37 +171,6 @@
               <label for="initialOrganizationName">机构名称</label>
               <input id="initialOrganizationName" name="organizationName" placeholder="例如 某某学校学生成长中心" />
             </div>
-            <div class="field">
-              <label for="initialOrganizationType">机构类型</label>
-              <select id="initialOrganizationType" name="organizationType">
-                <option value="">请选择</option>
-                <option>学校</option>
-                <option>心理咨询机构</option>
-                <option>社工/社区服务机构</option>
-                <option>教育培训机构</option>
-                <option>其他</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="initialUsageScenario">使用场景</label>
-              <select id="initialUsageScenario" name="usageScenario">
-                <option value="">请选择</option>
-                <option>学校心理辅导</option>
-                <option>班主任访谈准备</option>
-                <option>家校沟通支持</option>
-                <option>心理咨询辅助</option>
-                <option>社区青少年服务</option>
-                <option>其他</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="initialReportSignature">报告署名</label>
-              <input id="initialReportSignature" name="reportSignature" placeholder="例如 心理辅导室" />
-            </div>
-            <div class="field field-wide">
-              <label for="initialOrganizationNote">机构备注</label>
-              <textarea id="initialOrganizationNote" name="note" rows="2" placeholder="例如 本系统仅供校内心理辅导参考"></textarea>
-            </div>
             <button class="primary-button" type="submit">创建管理员并登录</button>
           </form>
 
@@ -219,7 +188,7 @@
           <p class="form-hint" id="accountMessage">请先登录后使用心灵画卷。</p>
         </section>
 
-        <section class="teacher-identity-panel" aria-label="当前教师身份设置">
+        <section class="teacher-identity-panel" id="teacherIdentityPanel" aria-label="当前教师身份设置">
           <div>
             <p class="section-kicker">本机教师身份</p>
             <h2>当前教师：<span id="currentTeacherLabel">未设置</span></h2>
@@ -520,7 +489,7 @@
             </div>
           </section>
 
-          <section class="dashboard-panel">
+          <section class="dashboard-panel" id="organizationSettingsPanel">
             <div class="panel-head">
               <p class="section-kicker">机构配置</p>
               <h2>机构信息设置</h2>

@@ -10,5 +10,10 @@ pnpm-debug.log*
 *.local
 data/*.local.json
 data/model-settings.local.json
+data/*.db
+data/*.db-*
+data/*.sqlite
+data/*.sqlite-*
+data/*.local.db
 Thumbs.db
 .DS_Store

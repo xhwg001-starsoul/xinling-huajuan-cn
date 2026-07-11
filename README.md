@@ -103,6 +103,17 @@ DOMESTIC_DATABASE_URL
 - 模型设置文件只保存 provider 和 model 名称，不保存 API Key。
 - `QWEN_BASE_URL` 应填写阿里云百炼提供的 OpenAI 兼容地址，`QWEN_VISION_MODEL` 可作为视觉模型环境变量默认值。
 
+## 大陆版账号数据库基础
+
+- 当前使用 SQLite 作为大陆版本地开发账号数据库，数据库文件位于 `data/xinling-cn.local.db`。
+- 数据库文件及其运行时附属文件不应提交到 GitHub；项目的 `.gitignore` 已忽略 `data/*.db`、`data/*.sqlite` 和 `data/*.local.db`。
+- 首次初始化管理员使用服务器环境变量 `CN_ADMIN_INIT_CODE`；session 保护使用 `CN_SESSION_SECRET`，真实值只能配置在 `.env.local` 或服务器环境变量中。
+- 当前只建立学校内部机构、管理员、教师、session 和安全使用元数据基础，不是会员或付费系统。
+- 正式部署前可根据并发、备份和运维需求迁移到 PostgreSQL 或国内云数据库。
+- 数据库不保存学生图片、学生背景资料正文、AI 报告正文或任何模型 API Key。
+
+大陆模式前端采用两层内部访问流程：先验证 `ACCESS_CODE`，再使用大陆版机构账号登录。session token 仅保存在浏览器 `sessionStorage` 的 `xinling_cn_session_token` 中，关闭会话后不会长期保留。管理员可进入工作台及受 `ADMIN_SETTINGS_CODE` 二次保护的模型设置；教师角色只显示普通分析功能和教师工作台。
+
 ## Supabase 初始化
 
 当前阶段仍保留 Supabase 方案：

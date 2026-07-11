@@ -1,6 +1,9 @@
 const { generateAnalysisWithModelRouter } = require("../services/modelRouter");
 const { getModelSettings } = require("../services/modelSettingsStore");
 const { readJsonBody, requireActiveProfileIfConfigured } = require("./_supabase");
+const { getBearerToken } = require("./_http");
+const { getRuntimeMode } = require("../config/runtimeMode");
+const { requireCurrentUser } = require("../services/authService");
 
 function accessCodeFrom(req, body) {
   return req.headers["x-access-code"] || body.accessCode || "";
@@ -38,10 +41,16 @@ async function handler(req, res) {
     if (!verifyAccessCode(accessCodeFrom(req, body))) {
       return sendJson(res, 401, { error: "invalid_access_code" });
     }
-    await requireActiveProfileIfConfigured(req);
+    if (getRuntimeMode().usesCnAuth) {
+      requireCurrentUser(getBearerToken(req));
+    } else {
+      await requireActiveProfileIfConfigured(req);
+    }
   } catch (error) {
     const message = safeErrorMessage(error);
-    const status = ["missing_login_token", "invalid_login_state", "profile_not_found", "account_disabled"].includes(message) ? 401 : 500;
+    const status = ["missing_login_token", "invalid_login_state", "profile_not_found", "account_disabled", "not_logged_in", "session_expired"].includes(message)
+      ? error.statusCode || 401
+      : error.statusCode || 500;
     return sendJson(res, status, { error: message });
   }
 

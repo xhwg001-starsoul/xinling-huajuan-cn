@@ -21,6 +21,7 @@ const dashboardView = document.querySelector("#dashboardView");
 const currentTeacherLabel = document.querySelector("#currentTeacherLabel");
 const currentOrganizationLabel = document.querySelector("#currentOrganizationLabel");
 const teacherAliasInput = document.querySelector("#teacherAliasInput");
+const teacherIdentityPanel = document.querySelector("#teacherIdentityPanel");
 const saveTeacherButton = document.querySelector("#saveTeacherButton");
 const organizationForm = document.querySelector("#organizationForm");
 const saveOrganizationButton = document.querySelector("#saveOrganizationButton");
@@ -64,6 +65,8 @@ const overviewUsageScenario = document.querySelector("#overviewUsageScenario");
 const overviewTeacherAlias = document.querySelector("#overviewTeacherAlias");
 const overviewTotalCount = document.querySelector("#overviewTotalCount");
 const userManagementPanel = document.querySelector("#userManagementPanel");
+const accountSecurityPanel = document.querySelector("#accountSecurityPanel");
+const organizationSettingsPanel = document.querySelector("#organizationSettingsPanel");
 const createTeacherForm = document.querySelector("#createTeacherForm");
 const createTeacherButton = document.querySelector("#createTeacherButton");
 const userManagementMessage = document.querySelector("#userManagementMessage");
@@ -98,6 +101,7 @@ const backPublicButton = document.querySelector("#backPublicButton");
 const accessStateKey = "xinling_access_ok";
 const accessCodeKey = "xinling_access_code";
 const adminSettingsAccessKey = "xinling_admin_settings_ok";
+const cnSessionTokenKey = "xinling_cn_session_token";
 const currentUserKey = "soul_painting_current_user";
 const usersKey = "soul_painting_users";
 const usageRecordsKey = "soul_painting_usage_records";
@@ -110,6 +114,9 @@ let lastReportText = "";
 let lastReportMeta = null;
 let isSubmitting = false;
 let showInitialAdminForm = false;
+let cnAuthMode = false;
+let cnHasAdmin = false;
+let currentCnUser = null;
 
 const contentConfig = {
   心灵对话: { button: "生成心灵对话", title: "心灵对话", waiting: "正在生成心灵对话，请稍等。", done: "心灵对话已生成。" },
@@ -2045,16 +2052,279 @@ exportUsageRecords = function exportCloudUsageRecords() {
   URL.revokeObjectURL(url);
 };
 
-async function initializeCloudApp() {
+function cnAuthErrorMessage(code) {
+  const messages = {
+    admin_already_exists: "系统已有管理员，请直接登录。",
+    invalid_cn_admin_init_code: "初始化码不正确。",
+    cn_admin_init_code_missing: "服务器尚未配置大陆版管理员初始化码。",
+    cn_session_secret_missing: "服务器尚未配置大陆版会话密钥。",
+    invalid_username: "用户名只能包含字母、数字、下划线、短横线，长度 3-32 位。",
+    username_exists: "用户名已存在，请直接登录或更换用户名。",
+    password_too_short: "密码至少需要 8 位。",
+    password_too_long: "密码长度超出限制。",
+    missing_organization_name: "机构名称不能为空。",
+    invalid_username_or_password: "用户名或密码不正确。",
+    account_disabled: "该账号已停用，请联系管理员。",
+    not_logged_in: "登录状态无效，请重新登录。",
+    session_expired: "登录状态已过期，请重新登录。",
+  };
+  return messages[code] || code || "大陆版账号服务暂时不可用。";
+}
+
+async function readCnResponse(response, fallback) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(cnAuthErrorMessage(data.error || fallback));
+  return data;
+}
+
+function cnToken() {
+  return sessionStorage.getItem(cnSessionTokenKey) || "";
+}
+
+function clearCnSession() {
+  sessionStorage.removeItem(cnSessionTokenKey);
+  sessionStorage.removeItem(adminSettingsAccessKey);
+  currentCnUser = null;
+}
+
+async function loadCnAuthStatus() {
+  const response = await fetch("/api/cn-auth-status");
+  const data = await readCnResponse(response, "cn_auth_status_failed");
+  cnHasAdmin = Boolean(data.hasAdmin);
+  showInitialAdminForm = !cnHasAdmin;
+  return data;
+}
+
+async function loadCnCurrentUser() {
+  const token = cnToken();
+  if (!token) {
+    currentCnUser = null;
+    return null;
+  }
+  const response = await fetch("/api/cn-current-user", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    clearCnSession();
+    return null;
+  }
+  const data = await response.json().catch(() => ({}));
+  currentCnUser = data.user || null;
+  return currentCnUser;
+}
+
+function renderCnUsageStats() {
+  todayCount.textContent = "0";
+  totalCount.textContent = "0";
+  riskCount.textContent = "0";
+  overviewTotalCount.textContent = "0";
+  teacherFilterSelect.innerHTML = "";
+  const option = document.createElement("option");
+  option.value = getCurrentTeacher();
+  option.textContent = getCurrentTeacher();
+  teacherFilterSelect.appendChild(option);
+  typeStatsList.innerHTML = "";
+  for (const type of contentTypes) {
+    const row = document.createElement("div");
+    row.className = "type-row";
+    const label = document.createElement("span");
+    const value = document.createElement("strong");
+    label.textContent = type;
+    value.textContent = "0";
+    row.append(label, value);
+    typeStatsList.appendChild(row);
+  }
+  recentRecordsBody.innerHTML = '<tr><td colspan="4">大陆版数据库统计接口将在后续版本接入</td></tr>';
+  applyOrganizationProfileToUI();
+}
+
+function renderCnPermissionUI() {
+  const user = getCurrentUser();
+  const admin = isAdmin(user);
+  accountSecurityPanel?.classList.add("is-hidden");
+  userManagementPanel.classList.add("is-hidden");
+  organizationSettingsPanel?.classList.add("is-hidden");
+  modelSettingsPanel.classList.toggle("is-hidden", !admin);
+  if (!admin) sessionStorage.removeItem(adminSettingsAccessKey);
+  teacherFilterSelect.disabled = true;
+  clearStatsButton.classList.add("is-hidden");
+  clearCurrentTeacherStatsButton.classList.add("is-hidden");
+}
+
+function renderCnLoginPanel() {
+  const user = getCurrentUser();
+  accountPanel.classList.toggle("is-hidden", Boolean(user));
+  initialAdminEntry.classList.toggle("is-hidden", Boolean(user) || cnHasAdmin);
+  initialAdminForm.classList.toggle("is-hidden", Boolean(user) || cnHasAdmin || !showInitialAdminForm);
+  userLoginForm.classList.toggle("is-hidden", Boolean(user) || !cnHasAdmin);
+  toggleInitialAdminButton.textContent = showInitialAdminForm ? "收起初始化管理员" : "初始化管理员";
+  accountPanelTitle.textContent = cnHasAdmin ? "大陆版登录" : "初始化大陆版管理员";
+  accountMessage.textContent = cnHasAdmin
+    ? "请输入机构管理员或教师账号。登录状态仅保留在本次浏览器会话中。"
+    : "系统尚未初始化管理员，请由部署者完成首次初始化。";
+  accountMessage.classList.remove("error-note");
+
+  const loggedIn = Boolean(user);
+  teacherIdentityPanel?.classList.toggle("is-hidden", !loggedIn);
+  analysisViewButton.classList.toggle("is-hidden", !loggedIn);
+  dashboardViewButton.classList.toggle("is-hidden", !loggedIn);
+  analysisView.classList.toggle("is-hidden", !loggedIn);
+  if (!loggedIn) dashboardView.classList.add("is-hidden");
+  renderCnPermissionUI();
+}
+
+async function loginCnAccount(username, password) {
+  const response = await fetch("/api/cn-login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  const data = await readCnResponse(response, "cn_login_failed");
+  sessionStorage.setItem(cnSessionTokenKey, data.token);
+  currentCnUser = data.user;
+  return data.user;
+}
+
+function configureCnAuth() {
+  cnAuthMode = true;
+  cloudAuthReady = true;
+
+  getCurrentUser = function getCurrentCnUser() {
+    return currentCnUser;
+  };
+  isAdmin = function isCnAdmin(user = getCurrentUser()) {
+    return user?.role === "admin";
+  };
+  isTeacher = function isCnTeacher(user = getCurrentUser()) {
+    return user?.role === "teacher";
+  };
+  requireLogin = function requireCnLogin(message = "请先登录后使用心灵画卷。") {
+    if (getCurrentUser()) return true;
+    setStatus(message, true);
+    renderLoginPanel();
+    return false;
+  };
+  getCloudAccessToken = async function getCnAccessToken() {
+    const token = cnToken();
+    if (!token || !getCurrentUser()) throw new Error("请先登录后生成报告。");
+    return token;
+  };
+  setCurrentUser = function setCurrentCnUser(user) {
+    currentCnUser = user || null;
+    renderCurrentUserInfo();
+    renderLoginPanel();
+    renderPermissionUI();
+    renderUsageStats();
+  };
+  createInitialAdmin = async function createInitialCnAdmin(formData) {
+    const password = String(formData.get("password") || "");
+    const confirmPassword = String(formData.get("confirmPassword") || "");
+    if (password.length < 8) throw new Error("密码至少需要 8 位。");
+    if (password !== confirmPassword) throw new Error("两次密码不一致。");
+    const payload = {
+      initCode: String(formData.get("initCode") || ""),
+      organizationName: sanitizeText(formData.get("organizationName")),
+      username: normalizeUsername(formData.get("username")),
+      displayName: sanitizeText(formData.get("displayName")),
+      password,
+    };
+    const response = await fetch("/api/cn-bootstrap-admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (response.status === 409) {
+      cnHasAdmin = true;
+      showInitialAdminForm = false;
+      renderLoginPanel();
+    }
+    await readCnResponse(response, "cn_bootstrap_admin_failed");
+    cnHasAdmin = true;
+    showInitialAdminForm = false;
+    const user = await loginCnAccount(payload.username, password);
+    renderCurrentUserInfo();
+    renderLoginPanel();
+    renderPermissionUI();
+    renderUsageStats();
+    return user;
+  };
+  loginUser = async function loginCnUser(formData) {
+    const username = normalizeUsername(formData.get("username"));
+    const password = String(formData.get("password") || "");
+    if (!isValidUsername(username)) throw new Error("登录账号格式不正确。");
+    await loginCnAccount(username, password);
+    renderCurrentUserInfo();
+    renderLoginPanel();
+    renderPermissionUI();
+    renderUsageStats();
+  };
+  logoutUser = async function logoutCnUser() {
+    const token = cnToken();
+    try {
+      if (token) {
+        await fetch("/api/cn-logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      }
+    } finally {
+      clearCnSession();
+      renderCurrentUserInfo();
+      renderLoginPanel();
+      showAnalysisView();
+      renderUsageStats();
+    }
+  };
+  renderLoginPanel = renderCnLoginPanel;
+  renderPermissionUI = renderCnPermissionUI;
+  renderUserManagementPanel = function renderCnUserManagementPanel() {};
+  getUsageRecords = function getCnUsageRecords() { return []; };
+  saveUsageRecord = async function saveCnUsageRecord() {};
+  renderUsageStats = renderCnUsageStats;
+  changeCurrentUserPassword = async function changeCnPasswordUnavailable() { throw new Error("大陆版密码修改功能将在后续版本接入。"); };
+  createTeacherUser = async function createCnTeacherUnavailable() { throw new Error("大陆版教师账号管理将在后续版本接入。"); };
+
+  const baseShowAnalysisView = showAnalysisView;
+  showAnalysisView = function showCnAnalysisView() {
+    if (!getCurrentUser()) {
+      analysisView.classList.add("is-hidden");
+      dashboardView.classList.add("is-hidden");
+      return;
+    }
+    baseShowAnalysisView();
+  };
+  showInternalApp = function showCnInternalApp() {
+    publicHomeView.classList.add("is-hidden");
+    loginScreen.classList.add("is-hidden");
+    appShell.classList.remove("is-hidden");
+    renderCurrentUserInfo();
+    renderLoginPanel();
+    if (getCurrentUser()) showAnalysisView();
+  };
+}
+
+async function initializeApp() {
   updateGenerateLabels();
   try {
-    await initSupabaseClient();
-    await loadCurrentSession();
-    cloudAuthReady = true;
+    const response = await fetch("/api/supabase-config");
+    const config = await response.json().catch(() => ({}));
+    const useCnAuth = config.appRegion === "cn" || config.authProvider === "cn-dev" || !config.url || !config.anonKey;
+    if (useCnAuth) {
+      configureCnAuth();
+      await loadCnAuthStatus();
+      await loadCnCurrentUser();
+    } else {
+      await initSupabaseClient();
+      await loadCurrentSession();
+      cloudAuthReady = true;
+    }
   } catch (error) {
-    cloudAuthReady = false;
-    accountMessage.textContent = "当前为大陆版本地准备模式：仅使用内部访问码进入，暂不启用 Supabase 云端账号。";
-    accountMessage.classList.remove("error-note");
+    if (cnAuthMode) {
+      clearCnSession();
+      accountMessage.textContent = cnAuthErrorMessage(error.message);
+      accountMessage.classList.add("error-note");
+    } else {
+      cloudAuthReady = false;
+      accountMessage.textContent = "账号服务暂时不可用，请检查服务器配置。";
+      accountMessage.classList.add("error-note");
+    }
   }
   renderCurrentUserInfo();
   renderLoginPanel();
@@ -2063,4 +2333,4 @@ async function initializeCloudApp() {
   restoreAccess();
 }
 
-initializeCloudApp();
+initializeApp();

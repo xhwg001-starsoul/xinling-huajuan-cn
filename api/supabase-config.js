@@ -13,7 +13,7 @@ module.exports = async function handler(req, res) {
     url: process.env.VITE_SUPABASE_URL || "",
     anonKey: process.env.VITE_SUPABASE_ANON_KEY || "",
     appRegion: runtime.appRegion,
-    authProvider: runtime.authProvider,
+    authProvider: runtime.usesCnAuth ? "cn-dev" : runtime.authProvider,
     settingsProvider: runtime.settingsProvider,
   });
 };
