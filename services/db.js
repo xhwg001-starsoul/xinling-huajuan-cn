@@ -4,7 +4,9 @@ const Database = require("better-sqlite3");
 
 const rootDir = path.resolve(__dirname, "..");
 const dataDir = path.join(rootDir, "data");
-const databasePath = path.join(dataDir, "xinling-cn.local.db");
+const databasePath = process.env.CN_DATABASE_PATH
+  ? path.resolve(rootDir, process.env.CN_DATABASE_PATH)
+  : path.join(dataDir, "xinling-cn.local.db");
 
 let database;
 
@@ -29,6 +31,8 @@ function initializeSchema(db) {
       role TEXT NOT NULL CHECK (role IN ('admin', 'teacher')),
       password_hash TEXT NOT NULL,
       is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+      must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
+      password_updated_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       last_login_at TEXT,
@@ -76,6 +80,19 @@ function initializeSchema(db) {
   `);
 }
 
+function ensureColumn(db, tableName, columnName, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  if (columns.some((column) => column.name === columnName)) return;
+  db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+}
+
+function runMigrations(db) {
+  ensureColumn(db, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1))");
+  ensureColumn(db, "users", "password_updated_at", "TEXT");
+  ensureColumn(db, "users", "updated_at", "TEXT");
+  db.prepare("UPDATE users SET updated_at = COALESCE(updated_at, created_at)").run();
+}
+
 function getDatabase() {
   if (database) return database;
   fs.mkdirSync(dataDir, { recursive: true });
@@ -84,6 +101,7 @@ function getDatabase() {
   database.pragma("journal_mode = WAL");
   database.pragma("busy_timeout = 5000");
   initializeSchema(database);
+  runMigrations(database);
   return database;
 }
 
@@ -97,4 +115,5 @@ module.exports = {
   databasePath,
   getDatabase,
   closeDatabase,
+  runMigrations,
 };

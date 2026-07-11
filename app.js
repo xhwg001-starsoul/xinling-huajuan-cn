@@ -13,6 +13,9 @@ const toggleInitialAdminButton = document.querySelector("#toggleInitialAdminButt
 const initialAdminForm = document.querySelector("#initialAdminForm");
 const userLoginForm = document.querySelector("#userLoginForm");
 const accountMessage = document.querySelector("#accountMessage");
+const passwordChangeGate = document.querySelector("#passwordChangeGate");
+const requiredPasswordChangeForm = document.querySelector("#requiredPasswordChangeForm");
+const requiredPasswordChangeMessage = document.querySelector("#requiredPasswordChangeMessage");
 const analysisViewButton = document.querySelector("#analysisViewButton");
 const dashboardViewButton = document.querySelector("#dashboardViewButton");
 const backToAnalysisButton = document.querySelector("#backToAnalysisButton");
@@ -69,6 +72,7 @@ const accountSecurityPanel = document.querySelector("#accountSecurityPanel");
 const organizationSettingsPanel = document.querySelector("#organizationSettingsPanel");
 const createTeacherForm = document.querySelector("#createTeacherForm");
 const createTeacherButton = document.querySelector("#createTeacherButton");
+const refreshUserListButton = document.querySelector("#refreshUserListButton");
 const userManagementMessage = document.querySelector("#userManagementMessage");
 const userListBody = document.querySelector("#userListBody");
 const accountUsernameText = document.querySelector("#accountUsernameText");
@@ -117,6 +121,7 @@ let showInitialAdminForm = false;
 let cnAuthMode = false;
 let cnHasAdmin = false;
 let currentCnUser = null;
+let cnUsers = [];
 
 const contentConfig = {
   心灵对话: { button: "生成心灵对话", title: "心灵对话", waiting: "正在生成心灵对话，请稍等。", done: "心灵对话已生成。" },
@@ -341,7 +346,7 @@ function renderCurrentTeacher() {
   teacherAliasInput.disabled = Boolean(user);
   saveTeacherButton.disabled = Boolean(user);
   document.querySelector(".teacher-identity-hint").textContent = user
-    ? "登录状态下，教师身份由账号显示名称自动确定。本机演示账号不等同于正式云端账号。"
+    ? "登录状态下，教师身份由学校内部账号的显示名称自动确定。"
     : "教师身份仅用于本浏览器中的使用统计，建议填写教师代号或昵称。请勿填写身份证号、手机号等敏感信息。";
 }
 
@@ -627,6 +632,10 @@ function showPublicHome() {
 
 function showInternalEntry() {
   publicHomeView.classList.add("is-hidden");
+  if (cnAuthMode) {
+    showInternalApp();
+    return;
+  }
   if (sessionStorage.getItem(accessStateKey) === "true" && sessionStorage.getItem(accessCodeKey)) {
     showInternalApp();
   } else {
@@ -693,6 +702,10 @@ logoutButton.addEventListener("click", () => {
     setStatus("请先登录后生成报告。", true);
     return;
   }
+  if (cnAuthMode) {
+    showPublicHome();
+    return;
+  }
   sessionStorage.removeItem(accessStateKey);
   sessionStorage.removeItem(accessCodeKey);
   sessionStorage.removeItem(adminSettingsAccessKey);
@@ -753,11 +766,22 @@ userLoginForm.addEventListener("submit", async (event) => {
 createTeacherButton.addEventListener("click", async () => {
   try {
     await createTeacherUser(new FormData(createTeacherForm));
-    userManagementMessage.textContent = "教师账号已创建。";
+    userManagementMessage.textContent = "教师账号已创建。请安全地将用户名和临时密码交给教师，教师首次登录后需要修改密码。";
     userManagementMessage.classList.remove("error-note");
   } catch (error) {
     userManagementMessage.textContent = error.message || "创建教师账号失败。";
     userManagementMessage.classList.add("error-note");
+  }
+});
+refreshUserListButton?.addEventListener("click", () => renderUserManagementPanel());
+requiredPasswordChangeForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await changeCurrentUserPassword(new FormData(requiredPasswordChangeForm));
+    requiredPasswordChangeForm.reset();
+  } catch (error) {
+    requiredPasswordChangeMessage.textContent = cnAuthErrorMessage(error.message);
+    requiredPasswordChangeMessage.classList.add("error-note");
   }
 });
 changePasswordButton.addEventListener("click", async () => {
@@ -773,7 +797,8 @@ changePasswordButton.addEventListener("click", async () => {
 });
 submitResetPasswordButton.addEventListener("click", async () => {
   try {
-    await resetTeacherPassword();
+    const changed = await resetTeacherPassword();
+    if (changed === false) return;
     resetPasswordForm.reset();
     resetPasswordMessage.textContent = "教师密码已重置，请将新密码通过安全方式告知该教师，并提醒其登录后及时修改。";
     resetPasswordMessage.classList.remove("error-note");
@@ -1373,8 +1398,8 @@ analyzeButton.addEventListener("click", async () => {
     return;
   }
 
-  const accessCode = sessionStorage.getItem(accessCodeKey);
-  if (!accessCode) {
+  const accessCode = cnAuthMode ? "" : sessionStorage.getItem(accessCodeKey);
+  if (!cnAuthMode && !accessCode) {
     setStatus("访问状态已失效，请重新输入内部访问码。", true);
     showLogin();
     return;
@@ -1390,13 +1415,14 @@ analyzeButton.addEventListener("click", async () => {
 
   try {
     const authToken = cloudAuthReady ? await getCloudAccessToken() : "";
-    const headers = { "Content-Type": "application/json", "X-Access-Code": accessCode };
+    const headers = { "Content-Type": "application/json" };
+    if (!cnAuthMode) headers["X-Access-Code"] = accessCode;
     if (authToken) headers.Authorization = `Bearer ${authToken}`;
     const response = await fetch("/api/analyze", {
       method: "POST",
       headers,
       body: JSON.stringify({
-        accessCode,
+        ...(cnAuthMode ? {} : { accessCode }),
         image: selectedDataUrl,
         imageType: selectedFile.type,
         profile: teacherProfile,
@@ -2064,9 +2090,20 @@ function cnAuthErrorMessage(code) {
     password_too_long: "密码长度超出限制。",
     missing_organization_name: "机构名称不能为空。",
     invalid_username_or_password: "用户名或密码不正确。",
-    account_disabled: "该账号已停用，请联系管理员。",
-    not_logged_in: "登录状态无效，请重新登录。",
-    session_expired: "登录状态已过期，请重新登录。",
+    authentication_required: "请先登录。",
+    admin_required: "只有管理员可以执行此操作。",
+    username_already_exists: "该用户名已存在。",
+    display_name_required: "教师姓名或显示名不能为空。",
+    user_not_found: "未找到该教师账号。",
+    user_inactive: "该账号已被停用。",
+    cannot_disable_self: "管理员不能停用自己的账号。",
+    cannot_disable_last_admin: "不能停用最后一个有效管理员。",
+    cannot_reset_self_password: "请通过“修改自己的密码”修改管理员密码。",
+    invalid_current_password: "当前密码不正确。",
+    passwords_do_not_match: "两次输入的密码不一致。",
+    password_same_as_current: "新密码不能与当前密码相同。",
+    password_change_required: "首次登录或密码被重置后，请先修改密码。",
+    session_invalid: "登录状态已失效，请重新登录。",
   };
   return messages[code] || code || "大陆版账号服务暂时不可用。";
 }
@@ -2141,19 +2178,23 @@ function renderCnUsageStats() {
 function renderCnPermissionUI() {
   const user = getCurrentUser();
   const admin = isAdmin(user);
-  accountSecurityPanel?.classList.add("is-hidden");
-  userManagementPanel.classList.add("is-hidden");
+  const passwordChangeRequired = Boolean(user?.mustChangePassword);
+  accountSecurityPanel?.classList.toggle("is-hidden", !user || passwordChangeRequired);
+  userManagementPanel.classList.toggle("is-hidden", !admin || passwordChangeRequired);
   organizationSettingsPanel?.classList.add("is-hidden");
-  modelSettingsPanel.classList.toggle("is-hidden", !admin);
+  modelSettingsPanel.classList.toggle("is-hidden", !admin || passwordChangeRequired);
   if (!admin) sessionStorage.removeItem(adminSettingsAccessKey);
   teacherFilterSelect.disabled = true;
   clearStatsButton.classList.add("is-hidden");
   clearCurrentTeacherStatsButton.classList.add("is-hidden");
+  if (admin && !passwordChangeRequired) renderUserManagementPanel();
 }
 
 function renderCnLoginPanel() {
   const user = getCurrentUser();
+  const passwordChangeRequired = Boolean(user?.mustChangePassword);
   accountPanel.classList.toggle("is-hidden", Boolean(user));
+  passwordChangeGate?.classList.toggle("is-hidden", !passwordChangeRequired);
   initialAdminEntry.classList.toggle("is-hidden", Boolean(user) || cnHasAdmin);
   initialAdminForm.classList.toggle("is-hidden", Boolean(user) || cnHasAdmin || !showInitialAdminForm);
   userLoginForm.classList.toggle("is-hidden", Boolean(user) || !cnHasAdmin);
@@ -2164,12 +2205,12 @@ function renderCnLoginPanel() {
     : "系统尚未初始化管理员，请由部署者完成首次初始化。";
   accountMessage.classList.remove("error-note");
 
-  const loggedIn = Boolean(user);
-  teacherIdentityPanel?.classList.toggle("is-hidden", !loggedIn);
-  analysisViewButton.classList.toggle("is-hidden", !loggedIn);
-  dashboardViewButton.classList.toggle("is-hidden", !loggedIn);
-  analysisView.classList.toggle("is-hidden", !loggedIn);
-  if (!loggedIn) dashboardView.classList.add("is-hidden");
+  const workspaceAllowed = Boolean(user) && !passwordChangeRequired;
+  teacherIdentityPanel?.classList.toggle("is-hidden", !workspaceAllowed);
+  analysisViewButton.classList.toggle("is-hidden", !workspaceAllowed);
+  dashboardViewButton.classList.toggle("is-hidden", !workspaceAllowed);
+  analysisView.classList.toggle("is-hidden", !workspaceAllowed);
+  if (!workspaceAllowed) dashboardView.classList.add("is-hidden");
   renderCnPermissionUI();
 }
 
@@ -2185,9 +2226,160 @@ async function loginCnAccount(username, password) {
   return data.user;
 }
 
+async function cnApi(path, options = {}) {
+  const token = cnToken();
+  const headers = { ...(options.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(path, { ...options, headers });
+  return readCnResponse(response, "cn_account_request_failed");
+}
+
+async function fetchCnUsers() {
+  if (!isAdmin()) return [];
+  const data = await cnApi("/api/cn-admin-users");
+  cnUsers = Array.isArray(data.users) ? data.users : [];
+  return cnUsers;
+}
+
+async function renderCnUserManagementPanel() {
+  if (!isAdmin() || getCurrentUser()?.mustChangePassword) {
+    userManagementPanel.classList.add("is-hidden");
+    return;
+  }
+  userManagementPanel.classList.remove("is-hidden");
+  userManagementMessage.textContent = "正在读取教师账号…";
+  userManagementMessage.classList.remove("error-note");
+  try {
+    await fetchCnUsers();
+  } catch (error) {
+    userManagementMessage.textContent = cnAuthErrorMessage(error.message);
+    userManagementMessage.classList.add("error-note");
+    return;
+  }
+  userManagementMessage.textContent = "账号列表已更新。";
+  userListBody.innerHTML = "";
+  if (!cnUsers.length) {
+    userListBody.innerHTML = '<tr><td colspan="8">暂无账号</td></tr>';
+    return;
+  }
+
+  for (const user of cnUsers) {
+    const row = document.createElement("tr");
+    const values = [
+      user.username,
+      user.displayName,
+      getRoleLabel(user.role),
+      user.isActive ? "正常" : "已停用",
+      user.mustChangePassword ? "是" : "否",
+      user.createdAt ? formatRecordTime(user.createdAt) : "—",
+      user.lastLoginAt ? formatRecordTime(user.lastLoginAt) : "从未登录",
+    ];
+    for (const value of values) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.appendChild(cell);
+    }
+    const actions = document.createElement("td");
+    if (user.role === "teacher") {
+      const statusButton = document.createElement("button");
+      statusButton.type = "button";
+      statusButton.className = "ghost-button table-button";
+      statusButton.textContent = user.isActive ? "停用" : "启用";
+      statusButton.addEventListener("click", async () => {
+        const action = user.isActive ? "停用" : "启用";
+        if (!confirm(`确定要${action}教师账号“${user.displayName}（${user.username}）”吗？`)) return;
+        try {
+          await updateUserStatus(user.id, !user.isActive);
+          userManagementMessage.textContent = `教师账号已${action}。`;
+          userManagementMessage.classList.remove("error-note");
+        } catch (error) {
+          userManagementMessage.textContent = cnAuthErrorMessage(error.message);
+          userManagementMessage.classList.add("error-note");
+        }
+      });
+      const resetButton = document.createElement("button");
+      resetButton.type = "button";
+      resetButton.className = "ghost-button table-button";
+      resetButton.textContent = "重置密码";
+      resetButton.addEventListener("click", () => openResetPasswordForm(user));
+      actions.append(statusButton, resetButton);
+    } else {
+      actions.textContent = "—";
+    }
+    row.appendChild(actions);
+    userListBody.appendChild(row);
+  }
+}
+
+async function createCnTeacher(formData) {
+  const temporaryPassword = String(formData.get("temporaryPassword") || "");
+  const confirmTemporaryPassword = String(formData.get("confirmTemporaryPassword") || "");
+  if (temporaryPassword.length < 8) throw new Error("password_too_short");
+  if (temporaryPassword !== confirmTemporaryPassword) throw new Error("passwords_do_not_match");
+  await cnApi("/api/cn-admin-create-user", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: normalizeUsername(formData.get("username")),
+      displayName: sanitizeText(formData.get("displayName")),
+      temporaryPassword,
+    }),
+  });
+  createTeacherForm.reset();
+  await renderCnUserManagementPanel();
+}
+
+async function updateCnUserStatus(userId, isActive) {
+  await cnApi("/api/cn-admin-update-user-status", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, isActive }),
+  });
+  await renderCnUserManagementPanel();
+}
+
+async function resetCnTeacherPassword() {
+  if (!resetPasswordTargetUser) throw new Error("user_not_found");
+  const formData = new FormData(resetPasswordForm);
+  const newTemporaryPassword = String(formData.get("newPassword") || "");
+  const confirmPassword = String(formData.get("confirmPassword") || "");
+  if (newTemporaryPassword.length < 8) throw new Error("password_too_short");
+  if (newTemporaryPassword !== confirmPassword) throw new Error("passwords_do_not_match");
+  if (!confirm(`确定要重置教师账号“${resetPasswordTargetUser.displayName}（${resetPasswordTargetUser.username}）”的密码吗？该教师现有登录会立即失效。`)) return false;
+  await cnApi("/api/cn-admin-reset-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId: resetPasswordTargetUser.id, newTemporaryPassword }),
+  });
+  closeResetPasswordForm();
+  await renderCnUserManagementPanel();
+  return true;
+}
+
+async function changeCnCurrentPassword(formData) {
+  const currentPassword = String(formData.get("currentPassword") || "");
+  const newPassword = String(formData.get("newPassword") || "");
+  const confirmPassword = String(formData.get("confirmPassword") || formData.get("confirmNewPassword") || "");
+  if (newPassword.length < 8) throw new Error("password_too_short");
+  if (newPassword !== confirmPassword) throw new Error("passwords_do_not_match");
+  await cnApi("/api/cn-change-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+  });
+  clearCnSession();
+  renderCurrentUserInfo();
+  renderLoginPanel();
+  showInternalApp();
+  accountMessage.textContent = "密码修改成功，请使用新密码重新登录。";
+  accountMessage.classList.remove("error-note");
+}
+
 function configureCnAuth() {
   cnAuthMode = true;
   cloudAuthReady = true;
+  sessionStorage.removeItem(accessStateKey);
+  sessionStorage.removeItem(accessCodeKey);
 
   getCurrentUser = function getCurrentCnUser() {
     return currentCnUser;
@@ -2199,6 +2391,10 @@ function configureCnAuth() {
     return user?.role === "teacher";
   };
   requireLogin = function requireCnLogin(message = "请先登录后使用心灵画卷。") {
+    if (getCurrentUser()?.mustChangePassword) {
+      renderLoginPanel();
+      return false;
+    }
     if (getCurrentUser()) return true;
     setStatus(message, true);
     renderLoginPanel();
@@ -2215,6 +2411,15 @@ function configureCnAuth() {
     renderLoginPanel();
     renderPermissionUI();
     renderUsageStats();
+  };
+  getOrganizationProfile = function getCnOrganizationProfile() {
+    return {
+      organizationName: currentCnUser?.organizationName || "",
+      organizationType: "",
+      usageScenario: "",
+      reportSignature: "",
+      organizationNote: "",
+    };
   };
   createInitialAdmin = async function createInitialCnAdmin(formData) {
     const password = String(formData.get("password") || "");
@@ -2274,16 +2479,18 @@ function configureCnAuth() {
   };
   renderLoginPanel = renderCnLoginPanel;
   renderPermissionUI = renderCnPermissionUI;
-  renderUserManagementPanel = function renderCnUserManagementPanel() {};
+  renderUserManagementPanel = renderCnUserManagementPanel;
   getUsageRecords = function getCnUsageRecords() { return []; };
   saveUsageRecord = async function saveCnUsageRecord() {};
   renderUsageStats = renderCnUsageStats;
-  changeCurrentUserPassword = async function changeCnPasswordUnavailable() { throw new Error("大陆版密码修改功能将在后续版本接入。"); };
-  createTeacherUser = async function createCnTeacherUnavailable() { throw new Error("大陆版教师账号管理将在后续版本接入。"); };
+  changeCurrentUserPassword = changeCnCurrentPassword;
+  createTeacherUser = createCnTeacher;
+  updateUserStatus = updateCnUserStatus;
+  resetTeacherPassword = resetCnTeacherPassword;
 
   const baseShowAnalysisView = showAnalysisView;
   showAnalysisView = function showCnAnalysisView() {
-    if (!getCurrentUser()) {
+    if (!getCurrentUser() || getCurrentUser().mustChangePassword) {
       analysisView.classList.add("is-hidden");
       dashboardView.classList.add("is-hidden");
       return;

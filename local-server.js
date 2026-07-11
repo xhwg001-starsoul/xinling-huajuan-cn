@@ -27,6 +27,11 @@ const apiHandlers = {
   "/api/cn-current-user": require("./api/cn-current-user"),
   "/api/cn-logout": require("./api/cn-logout"),
   "/api/cn-auth-status": require("./api/cn-auth-status"),
+  "/api/cn-admin-users": require("./api/cn-admin-users"),
+  "/api/cn-admin-create-user": require("./api/cn-admin-create-user"),
+  "/api/cn-admin-update-user-status": require("./api/cn-admin-update-user-status"),
+  "/api/cn-admin-reset-password": require("./api/cn-admin-reset-password"),
+  "/api/cn-change-password": require("./api/cn-change-password"),
 };
 
 const mimeTypes = {

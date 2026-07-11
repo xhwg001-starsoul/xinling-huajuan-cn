@@ -11,7 +11,7 @@
 - 百度云服务器部署
 - 国内大模型 API
 - 国内数据库或自建数据库
-- 学校内部试用与合规流程
+- 学校内部账号与合规流程
 
 ## 当前技术基线
 
@@ -30,7 +30,7 @@ npm install
 2. 复制 `.env.example` 为 `.env.local`，填写本地环境变量：
 
 ```text
-ACCESS_CODE=你的内部访问码
+ACCESS_CODE=旧版兼容访问码（大陆版账号模式可留空）
 OPENAI_API_KEY=你的 OpenAI API Key
 VITE_SUPABASE_URL=你的 Supabase Project URL
 VITE_SUPABASE_ANON_KEY=你的 Supabase anon key
@@ -57,7 +57,7 @@ http://127.0.0.1:4185
 当前仍使用海外学习版已有变量：
 
 ```text
-ACCESS_CODE
+ACCESS_CODE（仅海外版或旧版兼容）
 OPENAI_API_KEY
 VITE_SUPABASE_URL
 VITE_SUPABASE_ANON_KEY
@@ -73,11 +73,11 @@ ADMIN_INIT_CODE
 APP_REGION=cn
 AUTH_PROVIDER=cn-dev
 SETTINGS_PROVIDER=file
-ACCESS_CODE=你的内部访问码
+ACCESS_CODE=旧版兼容访问码（大陆版账号模式可留空）
 ADMIN_SETTINGS_CODE=你的管理员设置码
 ```
 
-- `ACCESS_CODE` 用于普通内部访问。
+- `ACCESS_CODE` 仅用于海外版或旧版兼容流程；大陆版账号模式不再使用该变量。
 - `ADMIN_SETTINGS_CODE` 仅用于开发阶段临时保护“模型设置”，不是正式账号系统。
 - 当前账号系统暂不使用 Supabase；未配置 Supabase 时，系统会自动进入 `cn-dev` 模式。
 - 模型 API Key 只能放在服务器环境变量中，不能写入前端代码或模型设置文件。
@@ -112,7 +112,14 @@ DOMESTIC_DATABASE_URL
 - 正式部署前可根据并发、备份和运维需求迁移到 PostgreSQL 或国内云数据库。
 - 数据库不保存学生图片、学生背景资料正文、AI 报告正文或任何模型 API Key。
 
-大陆模式前端采用两层内部访问流程：先验证 `ACCESS_CODE`，再使用大陆版机构账号登录。session token 仅保存在浏览器 `sessionStorage` 的 `xinling_cn_session_token` 中，关闭会话后不会长期保留。管理员可进入工作台及受 `ADMIN_SETTINGS_CODE` 二次保护的模型设置；教师角色只显示普通分析功能和教师工作台。
+大陆模式前端采用“公开首页 → 教师登录 → 分析系统 / 教师工作台”流程，不再要求 `ACCESS_CODE`。session token 仅保存在浏览器 `sessionStorage` 的 `xinling_cn_session_token` 中，关闭会话后不会长期保留。管理员可管理本机构教师账号，并进入受 `ADMIN_SETTINGS_CODE` 二次保护的模型设置；教师角色只显示普通分析功能、账号信息和教师工作台。
+
+### 教师账号管理
+
+- 管理员可以在教师工作台中查看本机构账号、创建 teacher、启用或停用 teacher，以及重置 teacher 临时密码。
+- 新建或重置密码后的 teacher 首次登录只能修改密码；修改成功后全部 session 会失效，必须使用新密码重新登录。
+- 停用账号、管理员重置密码、用户修改自己的密码都会立即撤销该用户已有 session。
+- 当前为单机构学校内部账号系统，不开放公众注册，不包含支付、会员、短信验证码或微信登录。
 
 ## Supabase 初始化
 

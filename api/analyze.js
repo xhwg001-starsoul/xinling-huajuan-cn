@@ -38,17 +38,21 @@ async function handler(req, res) {
 
   const { image, profile = {} } = body;
   try {
-    if (!verifyAccessCode(accessCodeFrom(req, body))) {
-      return sendJson(res, 401, { error: "invalid_access_code" });
-    }
-    if (getRuntimeMode().usesCnAuth) {
-      requireCurrentUser(getBearerToken(req));
+    const runtime = getRuntimeMode();
+    if (runtime.usesCnAuth) {
+      const user = requireCurrentUser(getBearerToken(req));
+      if (user.mustChangePassword) {
+        return sendJson(res, 403, { error: "password_change_required" });
+      }
     } else {
+      if (!verifyAccessCode(accessCodeFrom(req, body))) {
+        return sendJson(res, 401, { error: "invalid_access_code" });
+      }
       await requireActiveProfileIfConfigured(req);
     }
   } catch (error) {
     const message = safeErrorMessage(error);
-    const status = ["missing_login_token", "invalid_login_state", "profile_not_found", "account_disabled", "not_logged_in", "session_expired"].includes(message)
+    const status = ["missing_login_token", "invalid_login_state", "profile_not_found", "account_disabled", "authentication_required", "session_invalid", "user_inactive"].includes(message)
       ? error.statusCode || 401
       : error.statusCode || 500;
     return sendJson(res, status, { error: message });

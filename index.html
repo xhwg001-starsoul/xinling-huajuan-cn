@@ -19,7 +19,7 @@
             <a href="#features">功能</a>
             <a href="#scenarios">适用场景</a>
             <a href="#ethics">安全伦理</a>
-            <button class="ghost-button internal-entry-button" type="button">教师内部试用入口</button>
+            <button class="ghost-button internal-entry-button" type="button">教师登录</button>
           </div>
         </nav>
 
@@ -32,7 +32,7 @@
               心灵画卷不是心理诊断工具，而是帮助学校心理教师、班主任和心理辅导人员，根据学生房树人绘画与背景资料，生成心理观察线索、访谈思路、辅导建议、家校沟通建议和风险提示的辅助系统。
             </p>
             <div class="public-actions">
-              <button class="primary-button internal-entry-button" type="button">教师内部试用入口</button>
+              <button class="primary-button internal-entry-button" type="button">进入教师工作台</button>
               <a class="ghost-link" href="#features">了解功能</a>
             </div>
           </div>
@@ -89,12 +89,12 @@
         </section>
 
         <section class="public-section trial-section">
-          <p class="section-kicker">内部试用</p>
-          <h2>学校内部试用</h2>
+          <p class="section-kicker">学校内部账号</p>
+          <h2>教师工作台</h2>
           <p>
-            当前系统处于学校内部试用阶段。教师或机构如需试用，请通过线下授权获取内部访问码。进入内部试用区后，还需使用管理员或教师账号登录。
+            当前系统采用学校内部账号管理。教师账号由机构管理员创建，不开放公众注册。
           </p>
-          <button class="primary-button internal-entry-button" type="button">进入教师内部试用入口</button>
+          <button class="primary-button internal-entry-button" type="button">教师登录</button>
         </section>
         <p class="cn-project-badge">心灵画卷 · 大陆版准备项目</p>
       </section>
@@ -102,11 +102,11 @@
       <section class="login-screen is-hidden" id="loginScreen">
         <div class="login-card">
           <p class="eyebrow">心灵画卷</p>
-          <h1>教师内部试用入口</h1>
-          <p class="login-copy">本区域仅供已获得授权的学校教师、心理辅导人员或机构工作人员试用。请输入内部访问码后继续。</p>
+          <h1>旧版内部访问</h1>
+          <p class="login-copy">此入口仅用于海外版或旧版兼容运行模式。</p>
           <form class="login-form" id="loginForm">
             <div class="field">
-              <label for="accessCode">内部访问码</label>
+              <label for="accessCode">旧版访问码</label>
               <input id="accessCode" name="accessCode" type="password" autocomplete="one-time-code" required />
             </div>
             <button class="primary-button" type="submit">进入系统</button>
@@ -119,12 +119,12 @@
       <section class="app-shell is-hidden" id="appShell">
         <header class="topbar">
           <div>
-            <p class="eyebrow">学校内部测试版</p>
+            <p class="eyebrow">大陆版学校内部系统</p>
             <h1>心灵画卷</h1>
             <p class="subtitle">房树人绘画心理观察辅助系统</p>
           </div>
           <div class="teacher-box">
-            <span>访问状态：<strong>已验证</strong></span>
+            <span>账号系统：<strong>已启用</strong></span>
             <span id="currentUserBadge">当前登录：未登录</span>
             <span id="currentRoleBadge">角色：未登录</span>
             <button class="ghost-button" id="analysisViewButton" type="button">开始分析</button>
@@ -137,7 +137,7 @@
           <div>
             <p class="section-kicker">大陆版账号</p>
             <h2 id="accountPanelTitle">大陆版登录</h2>
-            <p class="account-note">内部访问码验证通过后，请使用机构管理员或教师账号登录。登录状态仅保留在本次浏览器会话中。</p>
+          <p class="account-note">请使用机构管理员或教师账号登录。登录状态仅保留在本次浏览器会话中。</p>
           </div>
 
           <div class="deployment-entry" id="initialAdminEntry">
@@ -188,9 +188,33 @@
           <p class="form-hint" id="accountMessage">请先登录后使用心灵画卷。</p>
         </section>
 
+        <section class="account-panel is-hidden" id="passwordChangeGate">
+          <div>
+            <p class="section-kicker">账号安全</p>
+            <h2>首次登录，请修改密码</h2>
+            <p class="account-note">当前密码是管理员设置的临时密码。完成修改后，系统会退出当前会话，请使用新密码重新登录。</p>
+          </div>
+          <form class="account-form" id="requiredPasswordChangeForm">
+            <div class="field">
+              <label for="requiredCurrentPassword">当前临时密码</label>
+              <input id="requiredCurrentPassword" name="currentPassword" type="password" autocomplete="current-password" required />
+            </div>
+            <div class="field">
+              <label for="requiredNewPassword">新密码</label>
+              <input id="requiredNewPassword" name="newPassword" type="password" autocomplete="new-password" minlength="8" required />
+            </div>
+            <div class="field">
+              <label for="requiredConfirmPassword">确认新密码</label>
+              <input id="requiredConfirmPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required />
+            </div>
+            <button class="primary-button" type="submit">修改密码并重新登录</button>
+          </form>
+          <p class="form-hint" id="requiredPasswordChangeMessage">新密码不得少于 8 位，也不要与其他网站共用。</p>
+        </section>
+
         <section class="teacher-identity-panel" id="teacherIdentityPanel" aria-label="当前教师身份设置">
           <div>
-            <p class="section-kicker">本机教师身份</p>
+            <p class="section-kicker">当前教师账号</p>
             <h2>当前教师：<span id="currentTeacherLabel">未设置</span></h2>
             <p class="context-line">当前机构：<span id="currentOrganizationLabel">未设置机构信息</span></p>
             <p class="teacher-identity-hint">教师身份仅用于本浏览器中的使用统计，建议填写教师代号或昵称。请勿填写身份证号、手机号等敏感信息。</p>
@@ -381,7 +405,7 @@
         <section class="dashboard-view is-hidden" id="dashboardView" aria-labelledby="dashboardTitle">
           <section class="dashboard-head">
             <div>
-              <p class="section-kicker">本机安全统计</p>
+              <p class="section-kicker">安全使用统计</p>
               <h2 id="dashboardTitle">心灵画卷 · 房树人绘画心理分析教师工作台</h2>
             </div>
             <button class="ghost-button" id="backToAnalysisButton" type="button">返回分析页面</button>
@@ -424,7 +448,7 @@
             <div class="panel-head">
               <p class="section-kicker">管理员功能</p>
               <h2>账号管理</h2>
-              <p class="form-hint">请使用教师代号或昵称创建账号，不建议填写手机号、身份证号等敏感信息。</p>
+              <p class="form-hint">创建教师临时账号后，教师首次登录必须修改密码。请勿填写手机号、身份证号等敏感信息。</p>
             </div>
             <form class="organization-form" id="createTeacherForm">
               <div class="field">
@@ -436,16 +460,17 @@
                 <input id="teacherDisplayName" name="displayName" placeholder="例如 张老师" />
               </div>
               <div class="field">
-                <label for="teacherPassword">初始密码</label>
-                <input id="teacherPassword" name="password" type="password" autocomplete="new-password" />
+                <label for="teacherPassword">临时密码</label>
+                <input id="teacherPassword" name="temporaryPassword" type="password" autocomplete="new-password" minlength="8" />
               </div>
               <div class="field">
-                <label for="teacherConfirmPassword">确认密码</label>
-                <input id="teacherConfirmPassword" name="confirmPassword" type="password" autocomplete="new-password" />
+                <label for="teacherConfirmPassword">确认临时密码</label>
+                <input id="teacherConfirmPassword" name="confirmTemporaryPassword" type="password" autocomplete="new-password" minlength="8" />
               </div>
             </form>
             <div class="dashboard-actions">
               <button class="ghost-button" id="createTeacherButton" type="button">创建教师账号</button>
+              <button class="ghost-button" id="refreshUserListButton" type="button">刷新列表</button>
             </div>
             <p class="form-hint" id="userManagementMessage"></p>
             <section class="reset-password-panel is-hidden" id="resetPasswordPanel">
@@ -478,12 +503,14 @@
                     <th>显示名称</th>
                     <th>角色</th>
                     <th>状态</th>
+                    <th>首次改密</th>
                     <th>创建时间</th>
+                    <th>最近登录</th>
                     <th>操作</th>
                   </tr>
                 </thead>
                 <tbody id="userListBody">
-                  <tr><td colspan="6">暂无用户</td></tr>
+                  <tr><td colspan="8">暂无用户</td></tr>
                 </tbody>
               </table>
             </div>

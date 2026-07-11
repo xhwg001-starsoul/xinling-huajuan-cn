@@ -69,6 +69,18 @@ function publicUser(row) {
     displayName: row.display_name,
     role: row.role,
     organizationId: row.organization_id,
+    organizationName: row.organization_name || "",
+    isActive: row.is_active !== 0,
+    mustChangePassword: row.must_change_password === 1,
+  };
+}
+
+function adminUserSummary(row) {
+  return {
+    ...publicUser(row),
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    lastLoginAt: row.last_login_at || "",
   };
 }
 
@@ -112,10 +124,21 @@ async function bootstrapAdmin({ initCode, organizationName, username, displayNam
       VALUES (?, ?, '', '', '', '', ?, ?)
     `).run(organizationId, safeOrganizationName, now, now);
     db.prepare(`
-      INSERT INTO users (id, organization_id, username, display_name, role, password_hash, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'admin', ?, 1, ?, ?)
-    `).run(userId, organizationId, safeUsername, safeDisplayName, passwordHash, now, now);
-    return { id: userId, username: safeUsername, display_name: safeDisplayName, role: "admin", organization_id: organizationId };
+      INSERT INTO users (
+        id, organization_id, username, display_name, role, password_hash, is_active,
+        must_change_password, password_updated_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'admin', ?, 1, 0, ?, ?, ?)
+    `).run(userId, organizationId, safeUsername, safeDisplayName, passwordHash, now, now, now);
+    return {
+      id: userId,
+      username: safeUsername,
+      display_name: safeDisplayName,
+      role: "admin",
+      organization_id: organizationId,
+      organization_name: safeOrganizationName,
+      is_active: 1,
+      must_change_password: 0,
+    };
   });
 
   return publicUser(create());
@@ -124,11 +147,15 @@ async function bootstrapAdmin({ initCode, organizationName, username, displayNam
 async function login({ username, password, req }) {
   const safeUsername = validateUsername(username);
   const db = getDatabase();
-  const user = db.prepare("SELECT * FROM users WHERE username = ? LIMIT 1").get(safeUsername);
+  const user = db.prepare(`
+    SELECT u.*, o.name AS organization_name
+    FROM users u JOIN organizations o ON o.id = u.organization_id
+    WHERE u.username = ? LIMIT 1
+  `).get(safeUsername);
   if (!user || !(await verifyPassword(password, user.password_hash))) {
     throw authError("invalid_username_or_password", 401);
   }
-  if (!user.is_active) throw authError("account_disabled", 403);
+  if (!user.is_active) throw authError("user_inactive", 403);
 
   const token = crypto.randomBytes(32).toString("base64url");
   const tokenHash = hashSessionToken(token);
@@ -150,26 +177,136 @@ async function login({ username, password, req }) {
 }
 
 function requireCurrentUser(token) {
-  if (!token) throw authError("not_logged_in", 401);
+  if (!token) throw authError("authentication_required", 401);
   const db = getDatabase();
   const tokenHash = hashSessionToken(token);
   const row = db.prepare(`
-    SELECT s.id AS session_id, s.expires_at, u.*
+    SELECT s.id AS session_id, s.expires_at, u.*, o.name AS organization_name
     FROM sessions s
     JOIN users u ON u.id = s.user_id
+    JOIN organizations o ON o.id = u.organization_id
     WHERE s.token_hash = ?
     LIMIT 1
   `).get(tokenHash);
-  if (!row) throw authError("not_logged_in", 401);
+  if (!row) throw authError("session_invalid", 401);
 
   const now = new Date().toISOString();
   if (row.expires_at <= now) {
     db.prepare("DELETE FROM sessions WHERE id = ?").run(row.session_id);
-    throw authError("session_expired", 401);
+    throw authError("session_invalid", 401);
   }
-  if (!row.is_active) throw authError("account_disabled", 403);
+  if (!row.is_active) {
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(row.id);
+    throw authError("user_inactive", 403);
+  }
   db.prepare("UPDATE sessions SET last_seen_at = ? WHERE id = ?").run(now, row.session_id);
   return publicUser(row);
+}
+
+function requireAdmin(token) {
+  const user = requireCurrentUser(token);
+  if (user.role !== "admin") throw authError("admin_required", 403);
+  return user;
+}
+
+function listOrganizationUsers(token) {
+  const admin = requireAdmin(token);
+  const db = getDatabase();
+  return db.prepare(`
+    SELECT u.*, o.name AS organization_name
+    FROM users u JOIN organizations o ON o.id = u.organization_id
+    WHERE u.organization_id = ?
+    ORDER BY CASE u.role WHEN 'admin' THEN 0 ELSE 1 END, u.created_at ASC
+  `).all(admin.organizationId).map(adminUserSummary);
+}
+
+async function createTeacher({ token, username, displayName, temporaryPassword }) {
+  const admin = requireAdmin(token);
+  const safeUsername = validateUsername(username);
+  const safeDisplayName = String(displayName || "").trim().slice(0, 80);
+  if (!safeDisplayName) throw authError("display_name_required");
+  const passwordHash = await hashPassword(validatePassword(temporaryPassword));
+  const db = getDatabase();
+  const existing = db.prepare("SELECT id FROM users WHERE username = ? LIMIT 1").get(safeUsername);
+  if (existing) throw authError("username_already_exists", 409);
+
+  const now = new Date().toISOString();
+  const userId = crypto.randomUUID();
+  try {
+    db.prepare(`
+      INSERT INTO users (
+        id, organization_id, username, display_name, role, password_hash, is_active,
+        must_change_password, password_updated_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'teacher', ?, 1, 1, ?, ?, ?)
+    `).run(userId, admin.organizationId, safeUsername, safeDisplayName, passwordHash, now, now, now);
+  } catch (error) {
+    if (String(error?.code || "").includes("SQLITE_CONSTRAINT_UNIQUE")) {
+      throw authError("username_already_exists", 409);
+    }
+    throw error;
+  }
+  return adminUserSummary(db.prepare(`
+    SELECT u.*, o.name AS organization_name FROM users u
+    JOIN organizations o ON o.id = u.organization_id WHERE u.id = ?
+  `).get(userId));
+}
+
+function updateUserStatus({ token, userId, isActive }) {
+  const admin = requireAdmin(token);
+  const db = getDatabase();
+  const target = db.prepare("SELECT * FROM users WHERE id = ? AND organization_id = ?").get(String(userId || ""), admin.organizationId);
+  if (!target) throw authError("user_not_found", 404);
+  if (target.id === admin.id && !isActive) throw authError("cannot_disable_self");
+  if (target.role === "admin" && !isActive) {
+    const activeAdmins = db.prepare("SELECT COUNT(*) count FROM users WHERE organization_id = ? AND role = 'admin' AND is_active = 1").get(admin.organizationId).count;
+    if (activeAdmins <= 1) throw authError("cannot_disable_last_admin");
+  }
+  const activeValue = isActive === true ? 1 : 0;
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    db.prepare("UPDATE users SET is_active = ?, updated_at = ? WHERE id = ?").run(activeValue, now, target.id);
+    if (!activeValue) db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target.id);
+  })();
+  return adminUserSummary(db.prepare("SELECT * FROM users WHERE id = ?").get(target.id));
+}
+
+async function resetTeacherPassword({ token, userId, newTemporaryPassword }) {
+  const admin = requireAdmin(token);
+  const db = getDatabase();
+  const target = db.prepare("SELECT * FROM users WHERE id = ? AND organization_id = ?").get(String(userId || ""), admin.organizationId);
+  if (!target) throw authError("user_not_found", 404);
+  if (target.id === admin.id || target.role !== "teacher") throw authError("cannot_reset_self_password");
+  const passwordHash = await hashPassword(validatePassword(newTemporaryPassword));
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE users
+      SET password_hash = ?, must_change_password = 1, password_updated_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(passwordHash, now, now, target.id);
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target.id);
+  })();
+  return adminUserSummary(db.prepare("SELECT * FROM users WHERE id = ?").get(target.id));
+}
+
+async function changePassword({ token, currentPassword, newPassword, confirmPassword }) {
+  const currentUser = requireCurrentUser(token);
+  if (String(newPassword || "") !== String(confirmPassword || "")) throw authError("passwords_do_not_match");
+  const safeNewPassword = validatePassword(newPassword);
+  const db = getDatabase();
+  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(currentUser.id);
+  if (!row || !(await verifyPassword(currentPassword, row.password_hash))) throw authError("invalid_current_password", 401);
+  if (await verifyPassword(safeNewPassword, row.password_hash)) throw authError("password_same_as_current");
+  const passwordHash = await hashPassword(safeNewPassword);
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE users
+      SET password_hash = ?, must_change_password = 0, password_updated_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(passwordHash, now, now, row.id);
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(row.id);
+  })();
 }
 
 function logout(token) {
@@ -188,6 +325,12 @@ module.exports = {
   bootstrapAdmin,
   login,
   requireCurrentUser,
+  requireAdmin,
+  listOrganizationUsers,
+  createTeacher,
+  updateUserStatus,
+  resetTeacherPassword,
+  changePassword,
   logout,
   getAuthStatus,
   normalizeUsername,
