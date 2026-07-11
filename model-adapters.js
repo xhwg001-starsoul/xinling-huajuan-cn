@@ -1,6 +1,8 @@
 // 模型适配器层：把具体模型供应商封装在后端，方便以后在 OpenAI、Qwen、豆包、智谱、讯飞、StepFun 等模型之间切换。
 // 所有 API Key 只能从后端环境变量读取，不能写进前端 HTML、JS 或可公开访问的配置文件。
 
+const { generateQwenVisionObservation } = require("./services/providers/qwenVisionProvider");
+
 const PROVIDERS = {
   openai: {
     name: "OpenAI",
@@ -29,9 +31,10 @@ const PROVIDERS = {
     baseUrlEnv: "QWEN_BASE_URL",
     visionModelEnv: "QWEN_VISION_MODEL",
     textModelEnv: "QWEN_TEXT_MODEL",
-    defaultVisionModel: "qwen-vl-plus",
+    defaultVisionModel: "",
     defaultTextModel: "qwen-plus",
-    implemented: false,
+    implemented: true,
+    supportsVision: true,
   },
   doubao: {
     name: "Doubao",
@@ -388,7 +391,9 @@ async function callDeepSeekText({ prompt, image, step, maxOutputTokens, modelCon
       errorCode: summary.code,
       errorSummary: summary.message,
     });
-    throw new Error(summary.code ? `deepseek_http_${response.status}:${summary.code}:${summary.message}` : `deepseek_http_${response.status}:${summary.message}`);
+    const error = new Error(summary.code ? `deepseek_http_${response.status}:${summary.code}:${summary.message}` : `deepseek_http_${response.status}:${summary.message}`);
+    error.httpStatus = response.status;
+    throw error;
   }
   return extractChatCompletionText(data);
 }
@@ -399,6 +404,15 @@ async function callModel({ provider, prompt, image, step, maxOutputTokens, model
   }
   if (provider === "deepseek") {
     return callDeepSeekText({ prompt, image, step, maxOutputTokens, modelConfig, visionObservationText });
+  }
+  if (provider === "qwen") {
+    if (step !== "vision") {
+      const error = new Error("qwen_provider_not_available");
+      error.provider = "qwen";
+      throw error;
+    }
+    const observation = await generateQwenVisionObservation({ image, modelConfig });
+    return JSON.stringify(observation, null, 2);
   }
   assertProviderReady(provider, step, modelConfig);
   throw new Error(`${providerConfig(provider).name} 适配器已预留，但尚未实现请求格式。`);
@@ -573,27 +587,41 @@ async function generateTeacherReport({ image, profile, modelConfig }) {
   const contentType = normalizeContentType(profile);
   const plan = selectedPlan(profile);
 
-  const observationRecord = await callModel({
-    provider: visionProvider,
-    step: "vision",
-    image,
-    prompt: buildObjectiveObservationPrompt(),
-    maxOutputTokens: 2200,
-    modelConfig,
-  });
+  let observationRecord;
+  try {
+    observationRecord = await callModel({
+      provider: visionProvider,
+      step: "vision",
+      image,
+      prompt: buildObjectiveObservationPrompt(),
+      maxOutputTokens: 2200,
+      modelConfig,
+    });
+  } catch (error) {
+    error.modelStage = "vision";
+    error.provider = error.provider || visionProvider;
+    throw error;
+  }
 
   const textPrompt = isDialogueMode(profile)
     ? buildDialoguePrompt(profile, observationRecord)
     : buildProfessionalReportPrompt(profile, observationRecord);
 
-  const markdown = await callModel({
-    provider: textProvider,
-    step: "text",
-    prompt: textPrompt,
-    maxOutputTokens: isDialogueMode(profile) ? 6500 : 8000,
-    modelConfig,
-    visionObservationText: observationRecord,
-  });
+  let markdown;
+  try {
+    markdown = await callModel({
+      provider: textProvider,
+      step: "text",
+      prompt: textPrompt,
+      maxOutputTokens: isDialogueMode(profile) ? 6500 : 8000,
+      modelConfig,
+      visionObservationText: observationRecord,
+    });
+  } catch (error) {
+    error.modelStage = "text";
+    error.provider = error.provider || textProvider;
+    throw error;
+  }
 
   return {
     documentTitle: documentTitleFromMarkdown(markdown, contentType === CONTENT_TYPES.dialogue ? "心灵对话" : plan.title),

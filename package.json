@@ -5,7 +5,7 @@
   "description": "Xinling Huajuan teacher internal test version",
   "scripts": {
     "start": "node local-server.js",
-    "check": "node --check app.js && node --check local-server.js && node --check model-adapters.js && node --check config/modelDefaults.js && node --check config/runtimeMode.js && node --check services/modelRouter.js && node --check services/modelSettingsStore.js && node --check services/providers/openaiProvider.js && node --check api/analyze.js && node --check api/verify-access.js && node --check api/verify-admin-settings.js && node --check api/model-settings.js && node --check api/_supabase.js && node --check api/supabase-config.js && node --check api/bootstrap-admin.js && node --check api/admin-create-user.js && node --check api/admin-update-user-status.js && node --check api/admin-reset-password.js"
+    "check": "node --check app.js && node --check local-server.js && node --check model-adapters.js && node --check config/modelDefaults.js && node --check config/runtimeMode.js && node --check services/modelRouter.js && node --check services/modelSettingsStore.js && node --check services/providers/openaiProvider.js && node --check services/providers/qwenVisionProvider.js && node --check api/analyze.js && node --check api/verify-access.js && node --check api/verify-admin-settings.js && node --check api/model-settings.js && node --check api/_supabase.js && node --check api/supabase-config.js && node --check api/bootstrap-admin.js && node --check api/admin-create-user.js && node --check api/admin-update-user-status.js && node --check api/admin-reset-password.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",

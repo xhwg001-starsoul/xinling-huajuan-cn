@@ -95,6 +95,14 @@ DOMESTIC_DATABASE_URL
 
 以上国内模型和国内数据库变量当前准备阶段暂未启用，不会被现有代码强制读取。
 
+## 通义千问 Qwen-VL 读图说明
+
+- Qwen-VL 只用于 `split` 模式的视觉观察阶段，只输出客观画面观察，不进行心理诊断。
+- Qwen-VL 不生成最终心理报告；最终报告仍由 `textProvider`（例如 DeepSeek）根据纯文本观察和教师填写资料生成。
+- `QWEN_API_KEY` 只能配置在 `.env.local` 或服务器环境变量中，不能写入前端或提交到 GitHub。
+- 模型设置文件只保存 provider 和 model 名称，不保存 API Key。
+- `QWEN_BASE_URL` 应填写阿里云百炼提供的 OpenAI 兼容地址，`QWEN_VISION_MODEL` 可作为视觉模型环境变量默认值。
+
 ## Supabase 初始化
 
 当前阶段仍保留 Supabase 方案：
