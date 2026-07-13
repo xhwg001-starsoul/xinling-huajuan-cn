@@ -1482,49 +1482,112 @@ function exportUsageRecordsCsv() {
   downloadBlobFile(`\uFEFF${lines.join("\r\n")}`, `xinling-usage-statistics-${exportDateStamp().replace(/-/g, "")}.csv`, "text/csv;charset=utf-8");
 }
 
-function markdownToHtml(markdown) {
-  const lines = String(markdown || "").split(/\r?\n/);
-  let html = "";
-  let inList = false;
-  const closeList = () => {
-    if (inList) {
-      html += "</ul>";
-      inList = false;
+function parseMarkdownBlocks(markdown) {
+  const blocks = [];
+  const paragraphLines = [];
+  let inCodeFence = false;
+
+  const flushParagraph = () => {
+    if (paragraphLines.length) {
+      blocks.push({ type: "paragraph", text: paragraphLines.join("\n") });
+      paragraphLines.length = 0;
     }
   };
 
-  for (const rawLine of lines) {
+  for (const rawLine of String(markdown || "").replace(/\r\n?/g, "\n").split("\n")) {
     const line = rawLine.trim();
-    if (!line) {
-      closeList();
+    if (/^`{3,}/.test(line)) {
+      flushParagraph();
+      inCodeFence = !inCodeFence;
       continue;
     }
-    if (line.startsWith("### ")) {
-      closeList();
-      html += `<h3>${escapeHtml(line.slice(4))}</h3>`;
-    } else if (line.startsWith("## ")) {
-      closeList();
-      html += `<h2>${escapeHtml(line.slice(3))}</h2>`;
-    } else if (line.startsWith("# ")) {
-      closeList();
-      html += `<h1>${escapeHtml(line.slice(2))}</h1>`;
-    } else if (/^[-*]\s+/.test(line)) {
-      if (!inList) {
-        html += "<ul>";
-        inList = true;
-      }
-      html += `<li>${formatInline(line.replace(/^[-*]\s+/, ""))}</li>`;
-    } else {
-      closeList();
-      html += `<p>${formatInline(line)}</p>`;
+    if (!line) {
+      flushParagraph();
+      continue;
     }
+
+    const heading = line.match(/^#{1,}\s*(.*)$/);
+    if (!inCodeFence && heading) {
+      flushParagraph();
+      const markerCount = (line.match(/^#+/) || [""])[0].length;
+      blocks.push({
+        type: "heading",
+        level: Math.min(Math.max(markerCount, 1), 6),
+        text: heading[1].replace(/\s+#+\s*$/, "").trim(),
+      });
+      continue;
+    }
+
+    const orderedList = !inCodeFence && line.match(/^(\d+)[.)]\s+(.*)$/);
+    if (orderedList) {
+      flushParagraph();
+      blocks.push({ type: "ordered-list-item", index: orderedList[1], text: orderedList[2] });
+      continue;
+    }
+
+    const unorderedList = !inCodeFence && line.match(/^[-*+]\s+(.*)$/);
+    if (unorderedList) {
+      flushParagraph();
+      blocks.push({ type: "unordered-list-item", text: unorderedList[1] });
+      continue;
+    }
+
+    paragraphLines.push(line);
   }
-  closeList();
-  return html;
+
+  flushParagraph();
+  return blocks;
 }
 
-function formatInline(value) {
-  return escapeHtml(value).replace(/\*\*(.*?")\*\*/g, "<strong>$1</strong>");
+function formatInlineHtml(value) {
+  return escapeHtml(value)
+    .replace(/(\*\*|__)(.+?)\1/g, "<strong>$2</strong>")
+    .replace(/`+([^`]+)`+/g, "<code>$1</code>")
+    .replace(/`+/g, "");
+}
+
+function stripInlineMarkdown(value) {
+  return String(value || "")
+    .replace(/(\*\*|__)(.+?)\1/g, "$2")
+    .replace(/`+([^`]+)`+/g, "$1")
+    .replace(/`+/g, "");
+}
+
+function markdownToHtml(markdown) {
+  let html = "";
+  let listType = "";
+
+  const closeList = () => {
+    if (listType) {
+      html += `</${listType}>`;
+      listType = "";
+    }
+  };
+
+  for (const block of parseMarkdownBlocks(markdown)) {
+    if (block.type === "heading") {
+      closeList();
+      html += `<h${block.level}>${formatInlineHtml(block.text)}</h${block.level}>`;
+      continue;
+    }
+
+    if (block.type === "unordered-list-item" || block.type === "ordered-list-item") {
+      const nextListType = block.type === "ordered-list-item" ? "ol" : "ul";
+      if (listType && listType !== nextListType) closeList();
+      if (!listType) {
+        html += `<${nextListType}>`;
+        listType = nextListType;
+      }
+      html += `<li>${formatInlineHtml(block.text)}</li>`;
+      continue;
+    }
+
+    closeList();
+    html += `<p>${formatInlineHtml(block.text).replace(/\n/g, "<br />")}</p>`;
+  }
+
+  closeList();
+  return html;
 }
 
 function renderReport(payload) {
@@ -1552,11 +1615,14 @@ function getCurrentReportMeta() {
 }
 
 function markdownToPlainText(markdown) {
-  return String(markdown || "")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^\s*[-*]\s+/gm, "- ")
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/\*(.*?)\*/g, "$1")
+  return parseMarkdownBlocks(markdown)
+    .map((block) => {
+      if (block.type === "heading") return stripInlineMarkdown(block.text);
+      if (block.type === "unordered-list-item") return `- ${stripInlineMarkdown(block.text)}`;
+      if (block.type === "ordered-list-item") return `${block.index}. ${stripInlineMarkdown(block.text)}`;
+      return stripInlineMarkdown(block.text);
+    })
+    .join("\n\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -1775,11 +1841,12 @@ analyzeButton.addEventListener("click", async () => {
 
 copyReportButton.addEventListener("click", async () => {
   if (!lastReportText) return;
+  const plainText = markdownToPlainText(lastReportText);
   try {
-    await navigator.clipboard.writeText(lastReportText);
+    await navigator.clipboard.writeText(plainText);
   } catch {
     const helper = document.createElement("textarea");
-    helper.value = lastReportText;
+    helper.value = plainText;
     helper.style.position = "fixed";
     helper.style.opacity = "0";
     document.body.appendChild(helper);

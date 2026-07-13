@@ -1,3 +1,11 @@
+﻿param(
+  [string]$DataRoot
+)
+
+if ($DataRoot) {
+  $env:XINLING_DATA_DIR = $DataRoot
+}
+
 . "$PSScriptRoot\common.ps1"
 Ensure-XinlingDirs
 
