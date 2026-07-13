@@ -1,18 +1,21 @@
-const dotenv = require("dotenv");
-const http = require("node:http");
+﻿const http = require("node:http");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { URL } = require("node:url");
+const { loadRuntimeConfig } = require("./config/loadRuntimeConfig");
 
 const rootDir = __dirname;
-dotenv.config({ path: path.join(rootDir, ".env"), quiet: true });
-dotenv.config({ path: path.join(rootDir, ".env.local"), override: true, quiet: true });
+loadRuntimeConfig();
+const { appMode, dataRoot, runtimeDir } = require("./services/dataPaths");
 
 const port = Number(process.env.PORT || 4185);
+const host = process.env.HOST || (appMode === "school" ? "0.0.0.0" : "127.0.0.1");
 
 logEnvironmentStatus();
 
 const apiHandlers = {
+  "/api/health": require("./api/health"),
+  "/api/version": require("./api/version"),
   "/api/verify-access": require("./api/verify-access"),
   "/api/analyze": require("./api/analyze"),
   "/api/supabase-config": require("./api/supabase-config"),
@@ -42,6 +45,9 @@ const apiHandlers = {
   "/api/cn-admin-organization": require("./api/cn-admin-organization"),
   "/api/cn-usage-summary": require("./api/cn-usage-summary"),
   "/api/cn-usage-records": require("./api/cn-usage-records"),
+  "/api/cn-admin-system-status": require("./api/cn-admin-system-status"),
+  "/api/cn-admin-backups": require("./api/cn-admin-backups"),
+  "/api/cn-admin-restore-database": require("./api/cn-admin-restore-database"),
 };
 
 const mimeTypes = {
@@ -68,9 +74,12 @@ function logEnvironmentStatus() {
     "ADMIN_SETTINGS_CODE",
     "CN_ADMIN_INIT_CODE",
     "CN_SESSION_SECRET",
+    "APP_MODE",
+    "HOST",
+    "PORT",
   ];
 
-  console.log("环境变量检查：");
+  console.log("鐜鍙橀噺妫€鏌ワ細");
   for (const key of keys) {
     console.log(`${key}: ${process.env[key] ? "loaded" : "missing"}`);
   }
@@ -105,10 +114,16 @@ const server = http.createServer(async (req, res) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host}`);
   const handler = apiHandlers[requestUrl.pathname];
   if (handler) return handler(req, res);
+  if (requestUrl.pathname.startsWith("/api/cn-admin-backups/")) return apiHandlers["/api/cn-admin-backups"](req, res);
   if (requestUrl.pathname.startsWith("/api/")) return sendJson(res, 404, { error: "api_not_found" });
   await serveStatic(req, res, requestUrl.pathname);
 });
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`心灵画卷大陆版准备项目已启动：http://127.0.0.1:${port}`);
+server.listen(port, host, async () => {
+  const pidPath = path.join(runtimeDir, "xinling.pid");
+  await fs.writeFile(pidPath, String(process.pid), "utf8").catch(() => {});
+  console.log(`Xinling Huajuan CN started: http://127.0.0.1:${port}`);
+  console.log(`Listening: ${host}:${port}`);
+  console.log(`Mode: ${appMode}`);
+  console.log(`Data root: ${dataRoot}`);
 });

@@ -169,3 +169,15 @@ DOMESTIC_DATABASE_URL
 - 用户主动修改密码仍需输入当前密码，新密码至少 8 位且不能与当前密码相同；修改成功后该用户所有 session 会失效，需要重新登录。
 - 模型配置状态只显示 Qwen、DeepSeek、OpenAI、豆包 API 是否已配置，不显示 Key 内容、长度、前后缀或环境变量列表。
 - 模型连接测试不使用学生图片、学生资料、完整 Prompt 或正式报告内容，也不会写入 `usage_records`。
+
+## v0.9-cn-school-lan-deployment：学校 Windows 局域网部署版
+
+- 新增 `APP_MODE=school`，school 模式默认监听 `0.0.0.0:4185`，development 模式仍保持 `127.0.0.1:4185`。
+- school 模式默认数据目录为 `C:\ProgramData\XinlingHuajuan`，数据库位于 `database\xinling-cn.db`，配置位于 `config\app.env`。
+- 新增统一数据路径模块，数据库、备份、日志、runtime 和 updates 都从固定路径派生，避免升级代码时覆盖学校数据。
+- 新增 `/api/health`、`/api/version` 和管理员 `/api/cn-admin-system-status`，公共健康检查不返回路径、Key、模型名或环境变量。
+- 新增管理员数据库备份 API 和后台入口，使用 SQLite backup API 创建一致性备份，并生成 SHA-256 元数据。
+- 新增保守恢复 API：仅允许从系统备份目录内已有备份恢复，恢复前自动备份当前数据库并执行完整性检查。
+- 新增 Windows 脚本：首次安装、配置、启动、停止、重启、状态、迁移开发库、备份、防火墙 Private 规则、开机自启动、发布包和升级校验。
+- 新增 `docs/` 学校部署、管理员操作、备份恢复、系统升级和部署检查清单。
+- 发布包脚本排除 `.env.local`、`app.env`、数据库、备份、日志、runtime、updates、`.git` 和 `node_modules`。

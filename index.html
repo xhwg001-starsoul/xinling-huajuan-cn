@@ -649,6 +649,74 @@
             <p class="form-hint" id="modelSettingsMessage">管理员设置由设置码临时保护。</p>
           </section>
 
+          <section class="dashboard-panel is-hidden" id="systemStatusPanel">
+            <div class="panel-head">
+              <p class="section-kicker">系统维护</p>
+              <h2>系统运行状态</h2>
+              <p class="form-hint">仅显示安全摘要，不显示 API Key、密码、token 或完整环境变量。</p>
+            </div>
+            <div class="overview-grid" id="systemStatusGrid"></div>
+            <div class="dashboard-actions">
+              <button class="ghost-button" id="refreshSystemStatusButton" type="button">刷新状态</button>
+            </div>
+            <p class="form-hint" id="systemStatusMessage"></p>
+          </section>
+
+          <section class="dashboard-panel is-hidden" id="backupPanel">
+            <div class="panel-head">
+              <p class="section-kicker">系统维护</p>
+              <h2>数据备份与恢复</h2>
+              <p class="form-hint">备份只包含 SQLite 中的账号、机构、统计和模型选择配置，不包含 API Key、学生图片、背景资料正文或 AI 报告正文。</p>
+            </div>
+            <div class="dashboard-actions">
+              <button class="ghost-button" id="createBackupButton" type="button">立即创建备份</button>
+              <button class="ghost-button" id="refreshBackupsButton" type="button">刷新备份列表</button>
+            </div>
+            <div class="field">
+              <label for="importBackupFileInput">导入备份文件</label>
+              <input id="importBackupFileInput" name="backupFile" type="file" accept=".db,.sqlite,application/octet-stream" />
+            </div>
+            <div class="dashboard-actions">
+              <button class="ghost-button" id="importBackupButton" type="button">导入备份文件</button>
+            </div>
+            <div class="records-table-wrap">
+              <table class="records-table">
+                <thead>
+                  <tr>
+                    <th>创建时间</th>
+                    <th>类型</th>
+                    <th>文件名</th>
+                    <th>大小</th>
+                    <th>SHA-256</th>
+                    <th>系统版本</th>
+                    <th>schema</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="backupListBody"></tbody>
+              </table>
+            </div>
+            <form class="organization-form" id="restoreDatabaseForm">
+              <div class="field field-wide">
+                <label for="restoreSelectedBackupText">待恢复的备份</label>
+                <input id="restoreBackupIdInput" name="backupId" type="hidden" />
+                <input id="restoreSelectedBackupText" type="text" value="请先从上方列表选择备份" readonly />
+              </div>
+              <div class="field">
+                <label for="restoreCurrentPasswordInput">管理员当前密码</label>
+                <input id="restoreCurrentPasswordInput" name="currentPassword" type="password" autocomplete="current-password" />
+              </div>
+              <div class="field">
+                <label for="restoreConfirmTextInput">二次确认</label>
+                <input id="restoreConfirmTextInput" name="confirmText" placeholder="输入：确认恢复" />
+              </div>
+            </form>
+            <div class="dashboard-actions">
+              <button class="ghost-button danger-button" id="restoreDatabaseButton" type="button" disabled>恢复选定备份</button>
+            </div>
+            <p class="form-hint" id="backupMessage"></p>
+          </section>
+
           <section class="dashboard-panel">
             <div class="panel-head">
               <p class="section-kicker">当前配置</p>

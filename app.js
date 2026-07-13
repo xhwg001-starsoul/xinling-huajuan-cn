@@ -115,6 +115,21 @@ const modelProviderStatusList = document.querySelector("#modelProviderStatusList
 const testVisionModelButton = document.querySelector("#testVisionModelButton");
 const testTextModelButton = document.querySelector("#testTextModelButton");
 const testModelPipelineButton = document.querySelector("#testModelPipelineButton");
+const systemStatusPanel = document.querySelector("#systemStatusPanel");
+const systemStatusGrid = document.querySelector("#systemStatusGrid");
+const refreshSystemStatusButton = document.querySelector("#refreshSystemStatusButton");
+const systemStatusMessage = document.querySelector("#systemStatusMessage");
+const backupPanel = document.querySelector("#backupPanel");
+const createBackupButton = document.querySelector("#createBackupButton");
+const refreshBackupsButton = document.querySelector("#refreshBackupsButton");
+const backupListBody = document.querySelector("#backupListBody");
+const restoreDatabaseForm = document.querySelector("#restoreDatabaseForm");
+const restoreDatabaseButton = document.querySelector("#restoreDatabaseButton");
+const restoreBackupIdInput = document.querySelector("#restoreBackupIdInput");
+const restoreSelectedBackupText = document.querySelector("#restoreSelectedBackupText");
+const importBackupFileInput = document.querySelector("#importBackupFileInput");
+const importBackupButton = document.querySelector("#importBackupButton");
+const backupMessage = document.querySelector("#backupMessage");
 const internalEntryButtons = document.querySelectorAll(".internal-entry-button");
 const backPublicButton = document.querySelector("#backPublicButton");
 
@@ -141,6 +156,7 @@ let cnUsers = [];
 let currentCnOrganization = null;
 let currentCnUsageSummary = null;
 let currentCnUsageRecords = [];
+let selectedRestoreBackup = null;
 
 const contentConfig = {
   心灵对话: { button: "生成心灵对话", title: "心灵对话", waiting: "正在生成心灵对话，请稍等。", done: "心灵对话已生成。" },
@@ -150,7 +166,6 @@ const contentConfig = {
   辅导记录初稿: { button: "生成辅导记录初稿", title: "心理辅导记录初稿", waiting: "正在生成辅导记录初稿，请稍等。", done: "辅导记录初稿已生成。" },
   风险提示与转介建议: { button: "生成风险提示与转介建议", title: "风险提示与转介建议", waiting: "正在生成风险提示与转介建议，请稍等。", done: "风险提示与转介建议已生成。" },
 };
-
 const contentTypes = Object.keys(contentConfig);
 
 function getUsers() {
@@ -660,6 +675,185 @@ async function runModelTest(path) {
   setModelSettingsMessage(describeModelTestResult(result), Boolean(result.success === false || result.overallStatus === "failed"));
 }
 
+function renderSystemStatusRows(status = {}) {
+  if (!systemStatusGrid) return;
+  systemStatusGrid.innerHTML = "";
+  const rows = [
+    ["程序版本", status.version || "-"],
+    ["运行模式", status.appMode || "-"],
+    ["监听端口", status.port || "-"],
+    ["数据库状态", status.database || "-"],
+    ["最近备份", status.latestBackupAt ? formatRecordTime(status.latestBackupAt) : "暂无"],
+    ["局域网地址", Array.isArray(status.lanAddresses) && status.lanAddresses.length ? status.lanAddresses.map((ip) => `http://${ip}:${status.port}`).join(" / ") : "未检测到"],
+  ];
+  for (const [labelText, valueText] of rows) {
+    const item = document.createElement("div");
+    const label = document.createElement("span");
+    const value = document.createElement("strong");
+    label.textContent = labelText;
+    value.textContent = String(valueText);
+    item.append(label, value);
+    systemStatusGrid.appendChild(item);
+  }
+}
+
+async function loadSystemStatus() {
+  if (!isAdmin()) return;
+  const data = await cnApi("/api/cn-admin-system-status");
+  renderSystemStatusRows(data.status || {});
+  if (systemStatusMessage) systemStatusMessage.textContent = "状态已刷新。";
+}
+
+function shortHash(value) {
+  const text = String(value || "");
+  return text ? `${text.slice(0, 10)}...` : "-";
+}
+
+function backupTypeLabel(type) {
+  const labels = {
+    manual: "manual",
+    "pre-restore": "pre-restore",
+    imported: "imported",
+  };
+  return labels[type] || type || "-";
+}
+
+function backupSizeLabel(size) {
+  const value = Number(size || 0);
+  if (!value) return "-";
+  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.round(value / 1024)} KB`;
+}
+
+function setSelectedRestoreBackup(backup) {
+  selectedRestoreBackup = backup || null;
+  if (restoreBackupIdInput) restoreBackupIdInput.value = selectedRestoreBackup?.id || "";
+  if (restoreSelectedBackupText) {
+    restoreSelectedBackupText.value = selectedRestoreBackup
+      ? `${selectedRestoreBackup.fileName || selectedRestoreBackup.id} (${selectedRestoreBackup.createdAt ? formatRecordTime(selectedRestoreBackup.createdAt) : "-"})`
+      : "请先从上方列表选择备份";
+  }
+  if (restoreDatabaseButton) restoreDatabaseButton.disabled = !selectedRestoreBackup;
+}
+
+async function loadBackups() {
+  if (!isAdmin() || !backupListBody) return;
+  const data = await cnApi("/api/cn-admin-backups");
+  const backups = Array.isArray(data.backups) ? data.backups : [];
+  backupListBody.innerHTML = "";
+  setSelectedRestoreBackup(null);
+  if (!backups.length) {
+    backupListBody.innerHTML = '<tr><td colspan="8">暂无备份</td></tr>';
+    return;
+  }
+  for (const backup of backups) {
+    const row = document.createElement("tr");
+    const values = [
+      backup.createdAt ? formatRecordTime(backup.createdAt) : "-",
+      backupTypeLabel(backup.backupType),
+      backup.fileName || backup.id || "-",
+      backupSizeLabel(backup.databaseSize),
+      `${backup.sha256Status || "-"} / ${shortHash(backup.sha256)}`,
+      backup.applicationVersion || "-",
+      backup.schemaVersion ?? "-",
+    ];
+    for (const value of values) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.appendChild(cell);
+    }
+    const actions = document.createElement("td");
+    const downloadButton = document.createElement("button");
+    downloadButton.type = "button";
+    downloadButton.className = "ghost-button table-button";
+    downloadButton.textContent = "下载";
+    downloadButton.addEventListener("click", () => downloadBackup(backup.id));
+    const restoreButton = document.createElement("button");
+    restoreButton.type = "button";
+    restoreButton.className = "ghost-button table-button";
+    restoreButton.textContent = "恢复此备份";
+    restoreButton.addEventListener("click", () => {
+      setSelectedRestoreBackup(backup);
+      if (backupMessage) backupMessage.textContent = "已选择备份，请输入管理员当前密码和确认文本后恢复。";
+    });
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "ghost-button table-button danger-button";
+    deleteButton.textContent = "删除";
+    deleteButton.addEventListener("click", () => deleteBackup(backup.id));
+    actions.append(downloadButton, restoreButton, deleteButton);
+    row.appendChild(actions);
+    backupListBody.appendChild(row);
+  }
+}
+
+async function createBackup() {
+  const data = await cnApi("/api/cn-admin-backups", { method: "POST" });
+  if (backupMessage) backupMessage.textContent = `备份已创建：${data.backup?.id || ""}`;
+  await loadBackups();
+  await loadSystemStatus().catch(() => {});
+}
+
+async function downloadBackup(id) {
+  const response = await fetch(`/api/cn-admin-backups/${encodeURIComponent(id)}/download`, {
+    headers: { Authorization: `Bearer ${cnToken()}` },
+  });
+  if (!response.ok) {
+    if (backupMessage) backupMessage.textContent = "备份下载失败。";
+    return;
+  }
+  const blob = await response.blob();
+  downloadBlobFile(blob, id, "application/octet-stream");
+}
+
+async function deleteBackup(id) {
+  if (!confirm(`确定删除备份 ${id} 吗？`)) return;
+  await cnApi(`/api/cn-admin-backups/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (backupMessage) backupMessage.textContent = "备份已删除。";
+  await loadBackups();
+}
+
+async function importBackup() {
+  const file = importBackupFileInput?.files?.[0];
+  if (!file) {
+    if (backupMessage) backupMessage.textContent = "请先选择要导入的备份文件。";
+    return;
+  }
+  const formData = new FormData();
+  formData.append("backupFile", file);
+  const response = await fetch("/api/cn-admin-backups/import", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${cnToken()}` },
+    body: formData,
+  });
+  const data = await readCnResponse(response, "backup_import_failed");
+  if (backupMessage) backupMessage.textContent = `导入成功：${data.backup?.id || ""}`;
+  if (importBackupFileInput) importBackupFileInput.value = "";
+  await loadBackups();
+}
+
+async function restoreDatabase() {
+  const formData = new FormData(restoreDatabaseForm);
+  if (!selectedRestoreBackup?.id) {
+    if (backupMessage) backupMessage.textContent = "请先从备份列表选择要恢复的备份。";
+    return;
+  }
+  const selectedLabel = `${selectedRestoreBackup.fileName || selectedRestoreBackup.id} / ${selectedRestoreBackup.createdAt ? formatRecordTime(selectedRestoreBackup.createdAt) : "-"}`;
+  if (!confirm(`恢复会覆盖当前机构、账号和统计数据。\n\n选中备份：${selectedLabel}\n\n确定继续吗？`)) return;
+  const data = await cnApi("/api/cn-admin-restore-database", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      backupId: selectedRestoreBackup.id,
+      currentPassword: String(formData.get("currentPassword") || ""),
+      confirmText: String(formData.get("confirmText") || ""),
+    }),
+  });
+  if (backupMessage) backupMessage.textContent = `恢复完成，请重新登录。恢复前备份：${data.result?.beforeRestoreBackupId || ""}`;
+  clearCnSession();
+  renderLoginPanel();
+}
+
 function renderUserManagementPanel() {
   if (!canManageUsers()) return;
   const current = getCurrentUser();
@@ -987,6 +1181,11 @@ saveModelSettingsButton.addEventListener("click", async (event) => {
 testVisionModelButton?.addEventListener("click", () => runModelTest("/api/cn-admin-test-vision-model"));
 testTextModelButton?.addEventListener("click", () => runModelTest("/api/cn-admin-test-text-model"));
 testModelPipelineButton?.addEventListener("click", () => runModelTest("/api/cn-admin-test-model-pipeline"));
+refreshSystemStatusButton?.addEventListener("click", () => loadSystemStatus().catch((error) => { if (systemStatusMessage) systemStatusMessage.textContent = error.message || "状态读取失败。"; }));
+createBackupButton?.addEventListener("click", () => createBackup().catch((error) => { if (backupMessage) backupMessage.textContent = error.message || "备份失败。"; }));
+refreshBackupsButton?.addEventListener("click", () => loadBackups().catch((error) => { if (backupMessage) backupMessage.textContent = error.message || "备份列表读取失败。"; }));
+restoreDatabaseButton?.addEventListener("click", () => restoreDatabase().catch((error) => { if (backupMessage) backupMessage.textContent = error.message || "恢复失败。"; }));
+importBackupButton?.addEventListener("click", () => importBackup().catch((error) => { if (backupMessage) backupMessage.textContent = error.message || "导入失败。"; }));
 
 function setStatus(message, isError = false) {
   formHint.textContent = message;
@@ -1325,7 +1524,7 @@ function markdownToHtml(markdown) {
 }
 
 function formatInline(value) {
-  return escapeHtml(value).replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+  return escapeHtml(value).replace(/\*\*(.*?")\*\*/g, "<strong>$1</strong>");
 }
 
 function renderReport(payload) {
@@ -2244,6 +2443,14 @@ function cnAuthErrorMessage(code) {
     cn_organization_update_failed: "机构信息保存失败，请稍后重试。",
     cn_usage_summary_failed: "使用统计读取失败，请稍后重试。",
     cn_usage_records_failed: "使用记录读取失败，请稍后重试。",
+    invalid_backup_id: "\u6240\u9009\u5907\u4efd\u4e0d\u5b58\u5728\u6216\u5df2\u5931\u6548\uff0c\u8bf7\u5237\u65b0\u5907\u4efd\u5217\u8868\u540e\u91cd\u65b0\u9009\u62e9\u3002",
+    backup_not_found: "\u6240\u9009\u5907\u4efd\u4e0d\u5b58\u5728\u6216\u5df2\u5931\u6548\uff0c\u8bf7\u5237\u65b0\u5907\u4efd\u5217\u8868\u540e\u91cd\u65b0\u9009\u62e9\u3002",
+    invalid_backup_file: "\u5907\u4efd\u6587\u4ef6\u65e0\u6548\u6216\u4e0d\u517c\u5bb9\u3002",
+    invalid_sqlite_header: "\u8bf7\u9009\u62e9\u6709\u6548\u7684 SQLite \u5907\u4efd\u6587\u4ef6\u3002",
+    database_integrity_check_failed: "\u5907\u4efd\u6587\u4ef6\u5b8c\u6574\u6027\u6821\u9a8c\u5931\u8d25\u3002",
+    incompatible_schema_version: "\u5907\u4efd\u6587\u4ef6\u7248\u672c\u9ad8\u4e8e\u5f53\u524d\u7cfb\u7edf\uff0c\u6682\u4e0d\u80fd\u5bfc\u5165\u3002",
+    uploaded_backup_too_large: "\u5907\u4efd\u6587\u4ef6\u8fc7\u5927\u3002",
+    backup_file_required: "\u8bf7\u9009\u62e9\u8981\u5bfc\u5165\u7684\u5907\u4efd\u6587\u4ef6\u3002",
   };
   return messages[code] || code || "大陆版账号服务暂时不可用。";
 }
@@ -2479,6 +2686,8 @@ function renderCnPermissionUI() {
   userManagementPanel.classList.toggle("is-hidden", !admin);
   organizationSettingsPanel?.classList.toggle("is-hidden", !user);
   modelSettingsPanel.classList.toggle("is-hidden", !admin);
+  systemStatusPanel?.classList.toggle("is-hidden", !admin);
+  backupPanel?.classList.toggle("is-hidden", !admin);
   if (!admin) sessionStorage.removeItem(adminSettingsAccessKey);
   teacherFilterSelect.disabled = true;
   clearStatsButton.classList.add("is-hidden");
@@ -2489,7 +2698,11 @@ function renderCnPermissionUI() {
     clearOrganizationButton.classList.add("is-hidden");
     organizationMessage.textContent = admin ? "管理员可以修改本机构信息。" : "机构信息由管理员维护，教师账号仅可查看。";
   }
-  if (admin && !passwordChangeRequired) renderUserManagementPanel();
+  if (admin && !passwordChangeRequired) {
+    renderUserManagementPanel();
+    loadSystemStatus().catch(() => {});
+    loadBackups().catch(() => {});
+}
 }
 
 function renderCnLoginPanel() {

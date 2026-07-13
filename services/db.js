@@ -1,12 +1,6 @@
 const fs = require("node:fs");
-const path = require("node:path");
 const Database = require("better-sqlite3");
-
-const rootDir = path.resolve(__dirname, "..");
-const dataDir = path.join(rootDir, "data");
-const databasePath = process.env.CN_DATABASE_PATH
-  ? path.resolve(rootDir, process.env.CN_DATABASE_PATH)
-  : path.join(dataDir, "xinling-cn.local.db");
+const { databaseDir, databasePath, ensureDataDirectories } = require("./dataPaths");
 
 let database;
 
@@ -149,7 +143,8 @@ function runMigrations(db) {
 
 function getDatabase() {
   if (database) return database;
-  fs.mkdirSync(dataDir, { recursive: true });
+  ensureDataDirectories();
+  fs.mkdirSync(databaseDir, { recursive: true });
   database = new Database(databasePath);
   database.pragma("foreign_keys = ON");
   database.pragma("journal_mode = WAL");
