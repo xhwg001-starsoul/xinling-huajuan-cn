@@ -1,160 +1,179 @@
 const { requireAdmin } = require("./authService");
-const { getOrganizationModelSettings } = require("./systemModelSettingsService");
+const {
+  providerDefinition,
+  resolveOrganizationModelRuntimeConfig,
+  safeStageDiagnostic,
+} = require("./modelRuntimeConfigService");
+const { testQwenVisionConnection } = require("./providers/qwenVisionProvider");
 
-function testError(code, statusCode = 400) {
+const MODEL_CONNECTION_TEST_TIMEOUT_MS = 30000;
+
+function testError(code, stage, statusCode = 400, httpStatus) {
   const error = new Error(code);
   error.statusCode = statusCode;
+  error.httpStatus = httpStatus;
+  error.provider = stage?.provider || "";
+  error.model = stage?.model || "";
+  error.baseUrlHost = stage?.baseUrlHost || "";
+  error.configSource = stage ? `${stage.settingsSource}/${stage.baseUrlSource}` : "";
   return error;
-}
-
-function chatUrl(baseUrl) {
-  const normalized = String(baseUrl || "").trim().replace(/\/+$/, "");
-  return normalized.endsWith("/chat/completions") ? normalized : `${normalized}/chat/completions`;
-}
-
-function responsesUrl(baseUrl) {
-  const normalized = String(baseUrl || "https://api.openai.com/v1/responses").trim().replace(/\/+$/, "");
-  return normalized.endsWith("/responses") ? normalized : `${normalized}/responses`;
-}
-
-function providerEnv(provider) {
-  if (provider === "openai") return { key: "OPENAI_API_KEY", base: "OPENAI_BASE_URL" };
-  if (provider === "qwen") return { key: "QWEN_API_KEY", base: "QWEN_BASE_URL" };
-  if (provider === "deepseek") return { key: "DEEPSEEK_API_KEY", base: "DEEPSEEK_BASE_URL" };
-  if (provider === "doubao") return { key: "DOUBAO_API_KEY", base: "DOUBAO_BASE_URL" };
-  throw testError("provider_not_implemented");
-}
-
-function defaultBaseUrl(provider) {
-  if (provider === "openai") return "https://api.openai.com/v1/responses";
-  if (provider === "deepseek") return "https://api.deepseek.com";
-  return "";
-}
-
-function configured(provider) {
-  const env = providerEnv(provider);
-  return Boolean(process.env[env.key]);
 }
 
 function safeErrorCode(error) {
   const message = String(error?.message || "model_test_failed");
+  const parts = message.split(":");
+  if (parts[0] === "qwen_request_failed") {
+    const safeParts = parts.slice(0, 3).map((part) => part.replace(/[^a-z0-9_.-]/gi, "").slice(0, 80));
+    return safeParts.filter(Boolean).join(":") || "qwen_request_failed";
+  }
   return /^[a-z0-9_:.-]+$/i.test(message) ? message.slice(0, 160) : "model_test_failed";
 }
 
-async function callTextProvider({ provider, model }) {
-  const env = providerEnv(provider);
-  const apiKey = process.env[env.key];
-  if (!apiKey) throw testError(`${provider}_api_key_missing`, 400);
-
-  if (provider === "openai") {
-    const response = await fetch(responsesUrl(process.env[env.base]), {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        max_output_tokens: 8,
-        input: [{ role: "user", content: [{ type: "input_text", text: "请只回复：连接成功" }] }],
-      }),
-    });
-    if (!response.ok) {
-      const error = testError(`openai_http_${response.status}`, 400);
-      error.httpStatus = response.status;
-      throw error;
-    }
-    return;
-  }
-
-  if (provider === "deepseek" || provider === "qwen") {
-    const baseUrl = process.env[env.base] || (provider === "deepseek" ? "https://api.deepseek.com" : "");
-    if (!baseUrl) throw testError(`${provider}_base_url_missing`, 400);
-    const response = await fetch(chatUrl(baseUrl), {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: "请只回复：连接成功" }],
-        max_tokens: 8,
-        temperature: 0,
-        stream: false,
-      }),
-    });
-    if (!response.ok) {
-      const error = testError(`${provider}_http_${response.status}`, 400);
-      error.httpStatus = response.status;
-      throw error;
-    }
-    return;
-  }
-
-  throw testError("provider_not_implemented", 400);
+function requireModelRuntime(token) {
+  const admin = requireAdmin(token);
+  return resolveOrganizationModelRuntimeConfig(admin.organizationId);
 }
 
-function safeResult({ success, provider, model, startedAt, error }) {
+function assertStageReady(stage) {
+  const definition = providerDefinition(stage.provider);
+  if (!definition.implemented) throw testError("provider_not_implemented", stage);
+  if (!process.env[definition.apiKeyEnv]) throw testError(`${stage.provider}_api_key_missing`, stage);
+  if (!stage.baseUrl || !stage.requestUrl) throw testError(`${stage.provider}_base_url_missing`, stage);
+  if (!stage.model) throw testError(`${stage.provider}_model_missing`, stage);
+  return definition;
+}
+
+async function callTextProvider(stage) {
+  const definition = assertStageReady(stage);
+  if (!["openai", "deepseek", "qwen"].includes(stage.provider)) {
+    throw testError("provider_not_implemented", stage);
+  }
+
+  const apiKey = process.env[definition.apiKeyEnv];
+  const body = stage.provider === "openai"
+    ? {
+      model: stage.model,
+      max_output_tokens: 8,
+      input: [{ role: "user", content: [{ type: "input_text", text: "Reply only with: connection_ok" }] }],
+    }
+    : {
+      model: stage.model,
+      messages: [{ role: "user", content: "Reply only with: connection_ok" }],
+      max_tokens: 8,
+      temperature: 0,
+      stream: false,
+    };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), MODEL_CONNECTION_TEST_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch(stage.requestUrl, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw testError(`${stage.provider}_request_timeout`, stage);
+    }
+    throw testError(`${stage.provider}_request_failed`, stage);
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!response.ok) {
+    let errorCode = `${stage.provider}_request_failed`;
+    try {
+      const data = await response.json();
+      const providerCode = String(data?.error?.code || data?.code || "").slice(0, 80);
+      if (providerCode) errorCode = `${errorCode}:${response.status}:${providerCode}`;
+      else errorCode = `${errorCode}:${response.status}`;
+    } catch {
+      errorCode = `${errorCode}:${response.status}`;
+    }
+    throw testError(errorCode, stage, 400, response.status);
+  }
+}
+
+function safeResult({ success, stage, startedAt, error }) {
   return {
     success,
-    provider,
-    model,
+    ...safeStageDiagnostic(stage),
+    configurationSource: {
+      settings: stage.settingsSource,
+      baseUrl: stage.baseUrlSource,
+    },
     durationMs: Date.now() - startedAt,
     ...(error ? { error: safeErrorCode(error), httpStatus: error.httpStatus || undefined } : {}),
   };
 }
 
-function selectedText(settings) {
-  return settings.pipelineMode === "single"
-    ? { provider: settings.singleProvider, model: settings.singleModel }
-    : { provider: settings.textProvider, model: settings.textModel };
+async function testVisionRuntime(runtime) {
+  const stage = runtime.vision;
+  const startedAt = Date.now();
+  try {
+    if (runtime.pipelineMode === "single" && stage.provider !== "openai") {
+      throw testError("provider_not_implemented", stage);
+    }
+    if (runtime.pipelineMode === "split" && !["openai", "qwen"].includes(stage.provider)) {
+      throw testError("provider_not_implemented", stage);
+    }
+    const definition = assertStageReady(stage);
+    if (definition.supportsVision === false || stage.provider === "deepseek") {
+      throw testError("provider_not_implemented", stage);
+    }
+    if (stage.provider === "qwen") {
+      await testQwenVisionConnection({ runtimeStage: stage });
+    } else if (stage.provider !== "openai") {
+      throw testError("provider_not_implemented", stage);
+    }
+    return safeResult({ success: true, stage, startedAt });
+  } catch (error) {
+    return safeResult({ success: false, stage, startedAt, error });
+  }
 }
 
-function selectedVision(settings) {
-  return settings.pipelineMode === "single"
-    ? { provider: settings.singleProvider, model: settings.singleModel }
-    : { provider: settings.visionProvider, model: settings.visionModel };
-}
-
-function requireModelSettings(token) {
-  const admin = requireAdmin(token);
-  return getOrganizationModelSettings(admin.organizationId);
+async function testTextRuntime(runtime) {
+  const stage = runtime.text;
+  const startedAt = Date.now();
+  try {
+    if (runtime.pipelineMode === "single" && stage.provider !== "openai") {
+      throw testError("provider_not_implemented", stage);
+    }
+    if (runtime.pipelineMode === "split" && !["openai", "deepseek"].includes(stage.provider)) {
+      throw testError("provider_not_implemented", stage);
+    }
+    await callTextProvider(stage);
+    return safeResult({ success: true, stage, startedAt });
+  } catch (error) {
+    return safeResult({ success: false, stage, startedAt, error });
+  }
 }
 
 async function testVisionModel(token) {
-  const settings = requireModelSettings(token);
-  const { provider, model } = selectedVision(settings);
-  const startedAt = Date.now();
-  try {
-    if (!configured(provider)) throw testError(`${provider}_api_key_missing`, 400);
-    const env = providerEnv(provider);
-    const baseUrl = process.env[env.base] || defaultBaseUrl(provider);
-    if (!baseUrl) throw testError(`${provider}_base_url_missing`, 400);
-    if (!String(model || "").trim()) throw testError(`${provider}_model_missing`, 400);
-    if (provider === "deepseek") throw testError("provider_not_implemented", 400);
-    if (provider === "doubao") throw testError("provider_not_implemented", 400);
-    return safeResult({ success: true, provider, model, startedAt });
-  } catch (error) {
-    return safeResult({ success: false, provider, model, startedAt, error });
-  }
+  return testVisionRuntime(requireModelRuntime(token));
 }
 
 async function testTextModel(token) {
-  const settings = requireModelSettings(token);
-  const { provider, model } = selectedText(settings);
-  const startedAt = Date.now();
-  try {
-    await callTextProvider({ provider, model });
-    return safeResult({ success: true, provider, model, startedAt });
-  } catch (error) {
-    return safeResult({ success: false, provider, model, startedAt, error });
-  }
+  return testTextRuntime(requireModelRuntime(token));
 }
 
 async function testModelPipeline(token) {
   const startedAt = Date.now();
-  const vision = await testVisionModel(token);
-  const text = await testTextModel(token);
+  const runtime = requireModelRuntime(token);
+  const [vision, text] = await Promise.all([
+    testVisionRuntime(runtime),
+    testTextRuntime(runtime),
+  ]);
+  const success = Boolean(vision.success && text.success);
   return {
-    success: Boolean(vision.success && text.success),
+    success,
+    pipelineMode: runtime.pipelineMode,
+    configurationSource: runtime.settingsSource,
+    updatedAt: runtime.updatedAt,
     visionStatus: vision.success ? "success" : "failed",
     textStatus: text.success ? "success" : "failed",
-    overallStatus: vision.success && text.success ? "success" : "failed",
+    overallStatus: success ? "success" : "failed",
     durationMs: Date.now() - startedAt,
     vision,
     text,

@@ -1,4 +1,5 @@
 const { normalizeModelConfig } = require("../config/modelDefaults");
+const { resolveModelRuntimeConfig } = require("./modelRuntimeConfigService");
 const openaiProvider = require("./providers/openaiProvider");
 
 function createRequestId() {
@@ -29,7 +30,7 @@ function traceModels(modelConfig) {
   };
 }
 
-function writeModelTrace({ requestId, modelConfig, visionStatus, textStatus, error }) {
+function writeModelTrace({ requestId, modelConfig, modelRuntimeConfig, visionStatus, textStatus, error }) {
   const models = traceModels(modelConfig);
   const parts = [
     `[model-trace] requestId=${traceValue(requestId)}`,
@@ -38,10 +39,16 @@ function writeModelTrace({ requestId, modelConfig, visionStatus, textStatus, err
     `visionModel=${traceValue(models.visionModel)}`,
     `textProvider=${traceValue(models.textProvider)}`,
     `textModel=${traceValue(models.textModel)}`,
+    `visionBaseUrlHost=${traceValue(modelRuntimeConfig?.vision?.baseUrlHost)}`,
+    `visionConfigSource=${traceValue(modelRuntimeConfig?.vision ? `${modelRuntimeConfig.vision.settingsSource}/${modelRuntimeConfig.vision.baseUrlSource}` : "-")}`,
+    `textBaseUrlHost=${traceValue(modelRuntimeConfig?.text?.baseUrlHost)}`,
+    `textConfigSource=${traceValue(modelRuntimeConfig?.text ? `${modelRuntimeConfig.text.settingsSource}/${modelRuntimeConfig.text.baseUrlSource}` : "-")}`,
     `visionStatus=${traceValue(visionStatus)}`,
     `textStatus=${traceValue(textStatus)}`,
   ];
   if (error?.httpStatus) parts.push(`httpStatus=${traceValue(error.httpStatus)}`);
+  if (error?.baseUrlHost) parts.push(`errorBaseUrlHost=${traceValue(error.baseUrlHost)}`);
+  if (error?.configSource) parts.push(`errorConfigSource=${traceValue(error.configSource)}`);
   if (error) parts.push(`errorCode=${traceValue(String(error.message || "model_call_failed").split(":")[0])}`);
   console.info(parts.join(" "));
 }
@@ -87,9 +94,13 @@ async function generateAnalysisWithModelRouter({
   prompt,
   contentType,
   modelConfig,
+  modelRuntimeConfig,
 }) {
   const requestId = createRequestId();
-  const resolvedConfig = normalizeModelConfig(modelConfig);
+  const resolvedRuntimeConfig = modelRuntimeConfig || resolveModelRuntimeConfig(modelConfig || {}, {
+    source: modelConfig?.source || "default",
+  });
+  const resolvedConfig = normalizeModelConfig(resolvedRuntimeConfig.modelConfig);
   try {
     assertSupportedRouting(resolvedConfig);
 
@@ -105,10 +116,12 @@ async function generateAnalysisWithModelRouter({
       image: firstImageFrom(images),
       profile,
       modelConfig: resolvedConfig,
+      modelRuntimeConfig: resolvedRuntimeConfig,
     });
     writeModelTrace({
       requestId,
       modelConfig: resolvedConfig,
+      modelRuntimeConfig: resolvedRuntimeConfig,
       visionStatus: "success",
       textStatus: "success",
     });
@@ -118,6 +131,7 @@ async function generateAnalysisWithModelRouter({
     writeModelTrace({
       requestId,
       modelConfig: resolvedConfig,
+      modelRuntimeConfig: resolvedRuntimeConfig,
       visionStatus: failedStage === "vision" ? "failed" : failedStage === "text" ? "success" : "not_started",
       textStatus: failedStage === "text" ? "failed" : "not_started",
       error,

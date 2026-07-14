@@ -2,81 +2,7 @@
 // 所有 API Key 只能从后端环境变量读取，不能写进前端 HTML、JS 或可公开访问的配置文件。
 
 const { generateQwenVisionObservation } = require("./services/providers/qwenVisionProvider");
-
-const PROVIDERS = {
-  openai: {
-    name: "OpenAI",
-    apiKeyEnv: "OPENAI_API_KEY",
-    baseUrlEnv: "OPENAI_BASE_URL",
-    defaultBaseUrl: "https://api.openai.com/v1/responses",
-    visionModelEnv: "OPENAI_VISION_MODEL",
-    textModelEnv: "OPENAI_TEXT_MODEL",
-    defaultVisionModel: "gpt-4.1",
-    defaultTextModel: "gpt-4.1",
-    implemented: true,
-  },
-  deepseek: {
-    name: "DeepSeek",
-    apiKeyEnv: "DEEPSEEK_API_KEY",
-    baseUrlEnv: "DEEPSEEK_BASE_URL",
-    defaultBaseUrl: "https://api.deepseek.com",
-    textModelEnv: "DEEPSEEK_TEXT_MODEL",
-    defaultTextModel: "deepseek-chat",
-    implemented: true,
-    supportsVision: false,
-  },
-  qwen: {
-    name: "Qwen",
-    apiKeyEnv: "QWEN_API_KEY",
-    baseUrlEnv: "QWEN_BASE_URL",
-    visionModelEnv: "QWEN_VISION_MODEL",
-    textModelEnv: "QWEN_TEXT_MODEL",
-    defaultVisionModel: "",
-    defaultTextModel: "qwen-plus",
-    implemented: true,
-    supportsVision: true,
-  },
-  doubao: {
-    name: "Doubao",
-    apiKeyEnv: "DOUBAO_API_KEY",
-    baseUrlEnv: "DOUBAO_BASE_URL",
-    visionModelEnv: "DOUBAO_VISION_MODEL",
-    textModelEnv: "DOUBAO_TEXT_MODEL",
-    defaultVisionModel: "doubao-vision-placeholder",
-    defaultTextModel: "doubao-text-placeholder",
-    implemented: false,
-  },
-  glm: {
-    name: "GLM",
-    apiKeyEnv: "GLM_API_KEY",
-    baseUrlEnv: "GLM_BASE_URL",
-    visionModelEnv: "GLM_VISION_MODEL",
-    textModelEnv: "GLM_TEXT_MODEL",
-    defaultVisionModel: "glm-4v-placeholder",
-    defaultTextModel: "glm-4-placeholder",
-    implemented: false,
-  },
-  xunfei: {
-    name: "Xunfei",
-    apiKeyEnv: "XUNFEI_API_KEY",
-    baseUrlEnv: "XUNFEI_BASE_URL",
-    visionModelEnv: "XUNFEI_VISION_MODEL",
-    textModelEnv: "XUNFEI_TEXT_MODEL",
-    defaultVisionModel: "xunfei-vision-placeholder",
-    defaultTextModel: "xunfei-text-placeholder",
-    implemented: false,
-  },
-  stepfun: {
-    name: "StepFun",
-    apiKeyEnv: "STEPFUN_API_KEY",
-    baseUrlEnv: "STEPFUN_BASE_URL",
-    visionModelEnv: "STEPFUN_VISION_MODEL",
-    textModelEnv: "STEPFUN_TEXT_MODEL",
-    defaultVisionModel: "step-vision-placeholder",
-    defaultTextModel: "step-text-placeholder",
-    implemented: false,
-  },
-};
+const { PROVIDERS, resolveModelRuntimeConfig } = require("./services/modelRuntimeConfigService");
 
 const CONTENT_TYPES = {
   dialogue: "心灵对话",
@@ -156,46 +82,6 @@ function selectedPlan(profile) {
   return documentPlans[normalizeContentType(profile)] || documentPlans[CONTENT_TYPES.dialogue];
 }
 
-function selectedProvider(step, modelConfig) {
-  if (modelConfig?.pipelineMode === "single") {
-    return String(modelConfig.singleProvider || "openai").toLowerCase();
-  }
-  if (modelConfig?.pipelineMode === "split") {
-    return String(step === "vision" ? modelConfig.visionProvider : modelConfig.textProvider).toLowerCase();
-  }
-
-  const key =
-    step === "vision"
-      ? process.env.VISION_MODEL_PROVIDER || process.env.MODEL_PROVIDER || "openai"
-      : process.env.TEXT_MODEL_PROVIDER || process.env.MODEL_PROVIDER || "openai";
-  return String(key).toLowerCase();
-}
-
-function openAIModelFallback(config) {
-  return config.apiKeyEnv === "OPENAI_API_KEY" ? process.env.OPENAI_MODEL : "";
-}
-
-function chatCompletionsUrl(baseUrl) {
-  const normalized = String(baseUrl || "").replace(/\/+$/, "");
-  if (normalized.endsWith("/chat/completions")) return normalized;
-  return `${normalized}/chat/completions`;
-}
-
-function selectedModel(step, config, modelConfig) {
-  if (modelConfig?.pipelineMode === "single") {
-    return modelConfig.singleModel || openAIModelFallback(config) || config.defaultTextModel;
-  }
-  if (modelConfig?.pipelineMode === "split") {
-    return step === "vision"
-      ? modelConfig.visionModel || process.env[config.visionModelEnv] || openAIModelFallback(config) || config.defaultVisionModel
-      : modelConfig.textModel || process.env[config.textModelEnv] || openAIModelFallback(config) || config.defaultTextModel;
-  }
-
-  return step === "vision"
-    ? process.env[config.visionModelEnv] || openAIModelFallback(config) || config.defaultVisionModel
-    : process.env[config.textModelEnv] || openAIModelFallback(config) || config.defaultTextModel;
-}
-
 function providerConfig(providerKey) {
   const config = PROVIDERS[providerKey];
   if (!config) {
@@ -204,8 +90,17 @@ function providerConfig(providerKey) {
   return config;
 }
 
-function assertProviderReady(providerKey, step, modelConfig) {
+function assertProviderReady(providerKey, step, modelConfig, modelRuntimeConfig) {
   const config = providerConfig(providerKey);
+  const runtime = modelRuntimeConfig || resolveModelRuntimeConfig(modelConfig || {}, {
+    source: modelConfig?.source || "default",
+  });
+  const stage = step === "vision" ? runtime.vision : runtime.text;
+  if (stage.provider !== providerKey) {
+    const error = new Error("model_runtime_provider_mismatch");
+    error.provider = providerKey;
+    throw error;
+  }
   if (!config.implemented) {
     throw new Error(`${config.name} 适配器已预留配置，但当前尚未接入真实调用逻辑。请先实现该供应商的后端适配器并设置 ${config.apiKeyEnv}。`);
   }
@@ -223,8 +118,10 @@ function assertProviderReady(providerKey, step, modelConfig) {
   return {
     config,
     apiKey: process.env[config.apiKeyEnv],
-    baseUrl: process.env[config.baseUrlEnv] || config.defaultBaseUrl,
-    model: selectedModel(step, config, modelConfig),
+    baseUrl: stage.baseUrl,
+    requestUrl: stage.requestUrl,
+    model: stage.model,
+    stage,
   };
 }
 
@@ -239,14 +136,14 @@ function extractOutputText(response) {
   return texts.join("\n").trim();
 }
 
-async function callOpenAI({ prompt, image, step, maxOutputTokens, modelConfig }) {
-  const { apiKey, baseUrl, model } = assertProviderReady("openai", step, modelConfig);
+async function callOpenAI({ prompt, image, step, maxOutputTokens, modelConfig, modelRuntimeConfig }) {
+  const { apiKey, requestUrl, model } = assertProviderReady("openai", step, modelConfig, modelRuntimeConfig);
   const content = [{ type: "input_text", text: prompt }];
   if (image) {
     content.push({ type: "input_image", image_url: image, detail: "high" });
   }
 
-  const response = await fetch(baseUrl, {
+  const response = await fetch(requestUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -302,7 +199,7 @@ function logDeepSeekDebug(summary) {
   console.warn("deepseek_call_debug", summary);
 }
 
-async function callDeepSeek({ prompt, image, step, maxOutputTokens, modelConfig, visionObservationText }) {
+async function callDeepSeek({ prompt, image, step, maxOutputTokens, modelConfig, modelRuntimeConfig, visionObservationText }) {
   if (step === "vision" || image || containsImagePayload(prompt)) {
     throw new Error("deepseek_received_image_input");
   }
@@ -310,8 +207,8 @@ async function callDeepSeek({ prompt, image, step, maxOutputTokens, modelConfig,
     throw new Error("missing_vision_observation_text");
   }
 
-  const { apiKey, baseUrl, model } = assertProviderReady("deepseek", step, modelConfig);
-  const response = await fetch(chatCompletionsUrl(baseUrl), {
+  const { apiKey, requestUrl, model } = assertProviderReady("deepseek", step, modelConfig, modelRuntimeConfig);
+  const response = await fetch(requestUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -344,7 +241,7 @@ async function callDeepSeek({ prompt, image, step, maxOutputTokens, modelConfig,
   return extractChatCompletionText(data);
 }
 
-async function callDeepSeekText({ prompt, image, step, maxOutputTokens, modelConfig, visionObservationText }) {
+async function callDeepSeekText({ prompt, image, step, maxOutputTokens, modelConfig, modelRuntimeConfig, visionObservationText }) {
   if (step === "vision" || image || containsImagePayload(prompt)) {
     throw new Error("deepseek_received_image_input");
   }
@@ -352,8 +249,8 @@ async function callDeepSeekText({ prompt, image, step, maxOutputTokens, modelCon
     throw new Error("missing_vision_observation_text");
   }
 
-  const { apiKey, baseUrl, model } = assertProviderReady("deepseek", step, modelConfig);
-  const response = await fetch(chatCompletionsUrl(baseUrl), {
+  const { apiKey, requestUrl, model, stage } = assertProviderReady("deepseek", step, modelConfig, modelRuntimeConfig);
+  const response = await fetch(requestUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -387,23 +284,30 @@ async function callDeepSeekText({ prompt, image, step, maxOutputTokens, modelCon
       visionProvider: modelConfig?.visionProvider || "",
       textProvider: modelConfig?.textProvider || "",
       hasVisionObservationText: Boolean(String(visionObservationText || "").trim()),
+      model: stage.model,
+      baseUrlHost: stage.baseUrlHost,
+      configSource: `${stage.settingsSource}/${stage.baseUrlSource}`,
       status: response.status,
       errorCode: summary.code,
       errorSummary: summary.message,
     });
     const error = new Error(summary.code ? `deepseek_http_${response.status}:${summary.code}:${summary.message}` : `deepseek_http_${response.status}:${summary.message}`);
     error.httpStatus = response.status;
+    error.provider = "deepseek";
+    error.model = stage.model;
+    error.baseUrlHost = stage.baseUrlHost;
+    error.configSource = `${stage.settingsSource}/${stage.baseUrlSource}`;
     throw error;
   }
   return extractChatCompletionText(data);
 }
 
-async function callModel({ provider, prompt, image, step, maxOutputTokens, modelConfig, visionObservationText }) {
+async function callModel({ provider, prompt, image, step, maxOutputTokens, modelConfig, modelRuntimeConfig, visionObservationText }) {
   if (provider === "openai") {
-    return callOpenAI({ prompt, image, step, maxOutputTokens, modelConfig });
+    return callOpenAI({ prompt, image, step, maxOutputTokens, modelConfig, modelRuntimeConfig });
   }
   if (provider === "deepseek") {
-    return callDeepSeekText({ prompt, image, step, maxOutputTokens, modelConfig, visionObservationText });
+    return callDeepSeekText({ prompt, image, step, maxOutputTokens, modelConfig, modelRuntimeConfig, visionObservationText });
   }
   if (provider === "qwen") {
     if (step !== "vision") {
@@ -411,10 +315,14 @@ async function callModel({ provider, prompt, image, step, maxOutputTokens, model
       error.provider = "qwen";
       throw error;
     }
-    const observation = await generateQwenVisionObservation({ image, modelConfig });
+    const observation = await generateQwenVisionObservation({
+      image,
+      modelConfig,
+      runtimeStage: modelRuntimeConfig.vision,
+    });
     return JSON.stringify(observation, null, 2);
   }
-  assertProviderReady(provider, step, modelConfig);
+  assertProviderReady(provider, step, modelConfig, modelRuntimeConfig);
   throw new Error(`${providerConfig(provider).name} 适配器已预留，但尚未实现请求格式。`);
 }
 
@@ -581,9 +489,12 @@ function documentTitleFromMarkdown(markdown, fallback) {
   return firstHeading ? firstHeading.replace(/^#\s+/, "").trim() : fallback;
 }
 
-async function generateTeacherReport({ image, profile, modelConfig }) {
-  const visionProvider = selectedProvider("vision", modelConfig);
-  const textProvider = selectedProvider("text", modelConfig);
+async function generateTeacherReport({ image, profile, modelConfig, modelRuntimeConfig }) {
+  const runtime = modelRuntimeConfig || resolveModelRuntimeConfig(modelConfig || {}, {
+    source: modelConfig?.source || "default",
+  });
+  const visionProvider = runtime.vision.provider;
+  const textProvider = runtime.text.provider;
   const contentType = normalizeContentType(profile);
   const plan = selectedPlan(profile);
 
@@ -596,6 +507,7 @@ async function generateTeacherReport({ image, profile, modelConfig }) {
       prompt: buildObjectiveObservationPrompt(),
       maxOutputTokens: 2200,
       modelConfig,
+      modelRuntimeConfig: runtime,
     });
   } catch (error) {
     error.modelStage = "vision";
@@ -615,6 +527,7 @@ async function generateTeacherReport({ image, profile, modelConfig }) {
       prompt: textPrompt,
       maxOutputTokens: isDialogueMode(profile) ? 6500 : 8000,
       modelConfig,
+      modelRuntimeConfig: runtime,
       visionObservationText: observationRecord,
     });
   } catch (error) {

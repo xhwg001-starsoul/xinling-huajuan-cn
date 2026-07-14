@@ -1,5 +1,8 @@
 const { generateAnalysisWithModelRouter } = require("../services/modelRouter");
-const { getOrganizationModelSettings } = require("../services/systemModelSettingsService");
+const {
+  resolveModelRuntimeConfig,
+  resolveOrganizationModelRuntimeConfig,
+} = require("../services/modelRuntimeConfigService");
 const { readJsonBody, requireActiveProfileIfConfigured } = require("./_supabase");
 const { getBearerToken } = require("./_http");
 const { getRuntimeMode } = require("../config/runtimeMode");
@@ -65,14 +68,16 @@ async function handler(req, res) {
   }
 
   try {
-    const modelConfig = runtime.usesCnAuth && authenticatedCnUser
-      ? getOrganizationModelSettings(authenticatedCnUser.organizationId)
-      : body.modelConfig || {};
+    const modelRuntimeConfig = runtime.usesCnAuth && authenticatedCnUser
+      ? resolveOrganizationModelRuntimeConfig(authenticatedCnUser.organizationId)
+      : resolveModelRuntimeConfig(body.modelConfig || {}, { source: "request" });
+    const modelConfig = modelRuntimeConfig.modelConfig;
     const result = await generateAnalysisWithModelRouter({
       images: [image],
       userInputs: profile,
       contentType: profile.contentType || profile.desiredHelp || profile.reportMode,
       modelConfig,
+      modelRuntimeConfig,
     });
     if (runtime.usesCnAuth && authenticatedCnUser) {
       try {
@@ -90,8 +95,12 @@ async function handler(req, res) {
     const message = safeErrorMessage(error);
     console.error("model_call_failed", {
       name: error?.name || "Error",
-      message,
       provider: error?.provider || "",
+      model: error?.model || "",
+      baseUrlHost: error?.baseUrlHost || "",
+      httpStatus: error?.httpStatus || undefined,
+      errorCode: error?.errorCode || String(message).split(":")[0],
+      configSource: error?.configSource || "",
     });
     if (message === "provider_not_implemented") {
       return sendJson(res, 400, {

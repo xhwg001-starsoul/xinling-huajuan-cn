@@ -670,9 +670,39 @@ function describeModelTestResult(result = {}) {
 }
 
 async function runModelTest(path) {
-  const data = await cnApi(path, { method: "POST" });
-  const result = data.result || {};
-  setModelSettingsMessage(describeModelTestResult(result), Boolean(result.success === false || result.overallStatus === "failed"));
+  const buttons = [testVisionModelButton, testTextModelButton, testModelPipelineButton].filter(Boolean);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  buttons.forEach((button) => {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  });
+  setModelSettingsMessage("正在测试模型连接，请稍候……");
+  try {
+    const data = await cnApi(path, { method: "POST", signal: controller.signal });
+    const result = data.result || {};
+    const stages = result.overallStatus ? [result.vision, result.text] : [result];
+    const diagnostics = stages
+      .filter(Boolean)
+      .map((stage) => {
+        const source = stage.configurationSource || {};
+        return `${stage.provider || "-"}: host=${stage.baseUrlHost || "-"}, settingsSource=${source.settings || stage.settingsSource || "-"}, baseUrlSource=${source.baseUrl || stage.baseUrlSource || "-"}, updatedAt=${stage.updatedAt || "-"}`;
+      })
+      .join(" | ");
+    const message = [describeModelTestResult(result), diagnostics].filter(Boolean).join(" | ");
+    setModelSettingsMessage(message, Boolean(result.success === false || result.overallStatus === "failed"));
+  } catch (error) {
+    const message = error?.name === "AbortError"
+      ? "模型连接测试超时，请检查视觉模型网络、Base URL 和模型名称。"
+      : (error.message || "模型连接测试失败，请稍后重试。");
+    setModelSettingsMessage(message, true);
+  } finally {
+    clearTimeout(timeout);
+    buttons.forEach((button) => {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    });
+  }
 }
 
 function renderSystemStatusRows(status = {}) {

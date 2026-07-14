@@ -20,6 +20,7 @@ data/logs/
 data/runtime/
 data/updates/
 school-data/
+school-data-test/
 app.env
 config/app.env
 backups/
@@ -27,11 +28,17 @@ logs/
 runtime/
 updates/
 release/
+*.temp-backup
+*.backup
+*.bak
 *.db
 *.db-wal
 *.db-shm
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
 Thumbs.db
 .DS_Store
