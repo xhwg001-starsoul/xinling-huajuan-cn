@@ -1,21 +1,16 @@
 const { resolveModelRuntimeConfig } = require("../modelRuntimeConfigService");
+const {
+  normalizeV1Observation,
+  parseJsonObject,
+  sanitizeV2AnalysisPackage,
+} = require("../htpVisualAnalysis");
+const {
+  HTP_VISUAL_V1,
+  HTP_VISUAL_HYPOTHESIS_V2,
+} = require("../prompts/htpVisualPrompts");
 
 const QWEN_SYSTEM_PROMPT =
-  "你是一个严谨的绘画图像观察助手。你只做客观视觉描述，不进行心理诊断。";
-
-const QWEN_OBSERVATION_PROMPT = `请观察这张房树人绘画，输出结构化客观观察 JSON。不要心理诊断，不要下结论。
-
-必须使用以下结构，并只填写客观可见内容；看不清的地方写“不清晰”或“不确定”：
-{
-  "house": { "exists": true, "position": "", "size": "", "roof": "", "door": "", "windows": "", "walls": "", "smokeOrChimney": "", "details": [], "uncertainty": "" },
-  "tree": { "exists": true, "position": "", "size": "", "trunk": "", "crown": "", "roots": "", "branches": "", "leavesOrFruit": "", "details": [], "uncertainty": "" },
-  "person": { "exists": true, "position": "", "size": "", "genderPresentationIfVisible": "", "head": "", "face": "", "eyes": "", "mouth": "", "body": "", "arms": "", "hands": "", "legs": "", "feet": "", "clothing": "", "details": [], "uncertainty": "" },
-  "overallComposition": { "paperUse": "", "mainPosition": "", "blankSpace": "", "relativeSize": "", "lineQuality": "", "pressureOrStrokeIfVisible": "", "erasuresOrCorrectionsIfVisible": "", "colorUseIfAny": "", "notableFeatures": [], "uncertainty": "" },
-  "rawObservationSummary": ""
-}
-
-不得出现焦虑、抑郁、缺乏安全感等心理解释或诊断。如果图像不是房树人绘画，请返回：
-{ "error": "not_house_tree_person_drawing", "message": "图像似乎不是房树人绘画，无法进行结构化观察。" }`;
+  "你是学校心理健康教育场景中的 HTP 多模态观察引擎。请严格区分客观观察、心理显著性和待验证假设；不得作心理诊断或最终结论。";
 
 const QWEN_CONNECTION_TEST_IMAGE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFcSURBVHhe7ZKBisMwGIL7/i/d4+c8OMa/YW1iyuIHInRtNLLj3JwMAN+WDADflqUDHMdv/J+vYFlyXfpVK7Cndhd/lRNr2rvLvnvuwJLUXbD0n+730mymJnQXKn2ie780i2knd5cosdz59grDT+2KlxS6c0ojGXrarLKzzi2GnNQVLI2kO790l9snzCj1idF58tddkZKDLrekcPmrLri0gq5H6QqX3u7CSqu504l+swt5uhiG/AOeKoavHYBFHuCJKP0yAJxCCXCi9MsAcAolwInSLwPAKZQAJ0q/DACnUAKcKP0yAJxCCXCi9MsAcAolwInSLwPAKZQAJ0q/DACnUAKcKP0yAJxCCXCi9MsAcAolwInSLwPAKZQAJ0q/DACnUAKcKP0yAJxCCXCi9MsAcAolwInSTx7g6WLJAHCKLuipYrk0wDeSAeDbkgHg25IB4NuSAeDbsvkA5/kDmI4NFRg3/eEAAAAASUVORK5CYII=";
@@ -36,27 +31,7 @@ function extractChatCompletionText(data) {
   return "";
 }
 
-function parseObservationJson(text) {
-  const candidates = [String(text || "").trim()];
-  const fenced = String(text || "").match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced?.[1]) candidates.push(fenced[1].trim());
-  const firstBrace = String(text || "").indexOf("{");
-  const lastBrace = String(text || "").lastIndexOf("}");
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    candidates.push(String(text).slice(firstBrace, lastBrace + 1));
-  }
-
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    try {
-      const parsed = JSON.parse(candidate);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
-    } catch {
-      // Try the next bounded representation without logging model output.
-    }
-  }
-  throw new Error("qwen_vision_json_parse_failed");
-}
+const parseObservationJson = parseJsonObject;
 
 function summarizeQwenError(data, fallback) {
   const error = data?.error || {};
@@ -69,6 +44,10 @@ function summarizeQwenError(data, fallback) {
 function logQwenDebug(summary) {
   if (process.env.MODEL_DEBUG !== "1") return;
   console.warn("qwen_vision_debug", summary);
+}
+
+function logQwenFallback(summary) {
+  console.warn("qwen_vision_v2_fallback", summary);
 }
 
 function qwenError(code, stage, httpStatus) {
@@ -87,9 +66,10 @@ async function generateQwenVisionObservation({
   image,
   modelConfig = {},
   runtimeStage,
-  prompt = QWEN_OBSERVATION_PROMPT,
+  prompt = HTP_VISUAL_V1,
   maxTokens = 2200,
   parseObservation = true,
+  analysisVersion = "v1",
   requestTimeoutMs = DEFAULT_QWEN_REQUEST_TIMEOUT_MS,
 }) {
   const selectedImage = Array.isArray(images) ? images[0] : image || images;
@@ -176,13 +156,69 @@ async function generateQwenVisionObservation({
   const content = extractChatCompletionText(data);
   if (!content) throw qwenError("qwen_response_empty", stage, response.status);
   if (!parseObservation) return content;
-  const observation = parseObservationJson(content);
+  if (analysisVersion === "v2" && data?.choices?.[0]?.finish_reason === "length") {
+    throw qwenError("qwen_vision_v2_response_truncated", stage, response.status);
+  }
+  let observation;
+  try {
+    const parsed = parseJsonObject(
+      content,
+      analysisVersion === "v2" ? "qwen_vision_v2_parse_failed" : "qwen_vision_json_parse_failed"
+    );
+    observation = analysisVersion === "v2" ? sanitizeV2AnalysisPackage(parsed) : parsed;
+  } catch (error) {
+    throw qwenError(error?.message || "qwen_vision_json_parse_failed", stage, response.status);
+  }
   if (observation.error) {
     const error = qwenError(String(observation.error).slice(0, 120), stage);
     error.detail = String(observation.message || "Qwen 无法完成客观图像观察").slice(0, 160);
     throw error;
   }
   return observation;
+}
+
+function v2ParseFailure(error) {
+  const code = String(error?.message || "").split(":")[0];
+  return code === "qwen_vision_v2_parse_failed"
+    || code === "qwen_vision_v2_schema_invalid"
+    || code === "qwen_vision_v2_response_truncated";
+}
+
+async function generateQwenVisionAnalysis({ images, image, modelConfig = {}, runtimeStage }) {
+  try {
+    return await generateQwenVisionObservation({
+      images,
+      image,
+      modelConfig,
+      runtimeStage,
+      prompt: HTP_VISUAL_HYPOTHESIS_V2,
+      maxTokens: 6500,
+      analysisVersion: "v2",
+    });
+  } catch (error) {
+    if (!v2ParseFailure(error)) throw error;
+    const stage = runtimeStage || resolveModelRuntimeConfig(modelConfig, {
+      source: modelConfig?.source || "default",
+    }).vision;
+    logQwenFallback({
+      model: stage.model,
+      baseUrlHost: stage.baseUrlHost,
+      configSource: `${stage.settingsSource}/${stage.baseUrlSource}`,
+      status: error.httpStatus || 0,
+      errorCode: String(error.message || "qwen_vision_v2_parse_failed").split(":")[0],
+      fallbackPrompt: "HTP_VISUAL_V1",
+    });
+    const legacy = await generateQwenVisionObservation({
+      images,
+      image,
+      modelConfig,
+      runtimeStage: stage,
+      prompt: HTP_VISUAL_V1,
+      maxTokens: 2200,
+      analysisVersion: "v1",
+    });
+    return normalizeV1Observation(legacy);
+  }
 }
 
 async function testQwenVisionConnection({ runtimeStage }) {
@@ -197,6 +233,9 @@ async function testQwenVisionConnection({ runtimeStage }) {
 }
 
 module.exports = {
+  HTP_VISUAL_V1,
+  HTP_VISUAL_HYPOTHESIS_V2,
+  generateQwenVisionAnalysis,
   generateQwenVisionObservation,
   parseObservationJson,
   testQwenVisionConnection,

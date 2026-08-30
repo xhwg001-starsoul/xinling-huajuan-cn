@@ -313,6 +313,56 @@ async function changePassword({ token, currentPassword, newPassword, confirmPass
   })();
 }
 
+function listLocalAdminsForPasswordReset() {
+  const db = getDatabase();
+  return db.prepare(`
+    SELECT id, username, display_name, is_active
+    FROM users
+    WHERE role = 'admin'
+    ORDER BY created_at ASC, username ASC
+  `).all().map((row) => ({
+    id: row.id,
+    username: row.username,
+    displayName: row.display_name,
+    isActive: row.is_active !== 0,
+  }));
+}
+
+async function resetLocalAdminPassword({ userId, newPassword, confirmPassword }) {
+  if (String(newPassword || "") !== String(confirmPassword || "")) {
+    throw authError("passwords_do_not_match");
+  }
+  const safeNewPassword = validatePassword(newPassword);
+  const db = getDatabase();
+  const target = db.prepare(`
+    SELECT id, username, display_name, role, is_active
+    FROM users
+    WHERE id = ? AND role = 'admin'
+    LIMIT 1
+  `).get(String(userId || ""));
+  if (!target) throw authError("admin_not_found", 404);
+
+  const passwordHash = await hashPassword(safeNewPassword);
+  const now = new Date().toISOString();
+  const reset = db.transaction(() => {
+    const result = db.prepare(`
+      UPDATE users
+      SET password_hash = ?, must_change_password = 0, password_updated_at = ?, updated_at = ?
+      WHERE id = ? AND role = 'admin'
+    `).run(passwordHash, now, now, target.id);
+    if (result.changes !== 1) throw authError("admin_not_found", 404);
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target.id);
+  });
+  reset();
+
+  return {
+    id: target.id,
+    username: target.username,
+    displayName: target.display_name,
+    isActive: target.is_active !== 0,
+  };
+}
+
 function logout(token) {
   if (!token) return;
   const db = getDatabase();
@@ -336,6 +386,8 @@ module.exports = {
   updateUserStatus,
   resetTeacherPassword,
   changePassword,
+  listLocalAdminsForPasswordReset,
+  resetLocalAdminPassword,
   logout,
   getAuthStatus,
   normalizeUsername,

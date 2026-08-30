@@ -950,6 +950,30 @@ textarea:focus {
   border-top: 1px solid rgba(104, 88, 63, 0.12);
 }
 
+.admin-analysis-diagnostics {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(104, 88, 63, 0.18);
+}
+
+.admin-analysis-diagnostics summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.admin-analysis-diagnostics pre {
+  max-height: 420px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid rgba(104, 88, 63, 0.14);
+  border-radius: 6px;
+  background: rgba(248, 248, 246, 0.92);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
 .cn-project-badge {
   margin: 28px 0 0;
   text-align: center;
@@ -1029,6 +1053,7 @@ textarea:focus {
   .loading-card,
   .dashboard-view,
   .report-actions,
+  .admin-analysis-diagnostics,
   .disclaimer {
     display: none !important;
   }

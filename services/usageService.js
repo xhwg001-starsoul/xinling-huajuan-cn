@@ -42,7 +42,7 @@ function whereClause(user, filters) {
   return { sql: clauses.join(" AND "), params };
 }
 
-function recordUsage({ user, contentType, modelConfig }) {
+function recordUsage({ user, contentType, modelConfig, analysisResult }) {
   const db = getDatabase();
   const now = new Date().toISOString();
   const type = safeText(contentType || "未指定", 120) || "未指定";
@@ -51,7 +51,8 @@ function recordUsage({ user, contentType, modelConfig }) {
       id, organization_id, user_id, username, teacher_alias, user_role, content_type,
       is_risk_related, pipeline_mode, vision_provider, vision_model, text_provider,
       text_model, single_provider, single_model, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      , analysis_mode, provider, model
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     crypto.randomUUID(),
     user.organizationId,
@@ -69,6 +70,9 @@ function recordUsage({ user, contentType, modelConfig }) {
     safeText(modelConfig.singleProvider, 40),
     safeText(modelConfig.singleModel, 120),
     now,
+    safeText(analysisResult?.mode || modelConfig.analysisMode || "legacy_dual_model", 40),
+    safeText(analysisResult?.provider || (modelConfig.analysisMode === "single_multimodal" ? modelConfig.multimodalProvider : `${modelConfig.visionProvider}->${modelConfig.textProvider}`), 80),
+    safeText(analysisResult?.model || (modelConfig.analysisMode === "single_multimodal" ? modelConfig.multimodalModel : `${modelConfig.visionModel}->${modelConfig.textModel}`), 240),
   );
 }
 
@@ -88,6 +92,9 @@ function safeRecord(row) {
     textModel: row.text_model,
     singleProvider: row.single_provider,
     singleModel: row.single_model,
+    analysisMode: row.analysis_mode,
+    provider: row.provider,
+    model: row.model,
     createdAt: row.created_at,
   };
 }
@@ -108,12 +115,14 @@ function usageSummary({ token, filters: rawFilters = {} }) {
 
   const providerCounts = {};
   for (const row of db.prepare(`
-    SELECT pipeline_mode, vision_provider, vision_model, text_provider, text_model, single_provider, single_model, COUNT(*) count
+    SELECT analysis_mode, provider, model, pipeline_mode, vision_provider, vision_model, text_provider, text_model, single_provider, single_model, COUNT(*) count
     FROM usage_records WHERE ${where.sql}
-    GROUP BY pipeline_mode, vision_provider, vision_model, text_provider, text_model, single_provider, single_model
+    GROUP BY analysis_mode, provider, model, pipeline_mode, vision_provider, vision_model, text_provider, text_model, single_provider, single_model
     ORDER BY count DESC
   `).all(...where.params)) {
-    const label = row.pipeline_mode === "split"
+    const label = row.provider && row.model
+      ? `${row.analysis_mode || "legacy_dual_model"}：${row.provider}/${row.model}`
+      : row.pipeline_mode === "split"
       ? `${row.vision_provider || "-"}/${row.vision_model || "-"} → ${row.text_provider || "-"}/${row.text_model || "-"}`
       : `${row.single_provider || "-"}/${row.single_model || "-"}`;
     providerCounts[label] = (providerCounts[label] || 0) + row.count;

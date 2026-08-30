@@ -395,6 +395,15 @@
               <p class="export-hint">导出文件将保存到本机，请妥善保管，避免传播未成年人敏感资料。</p>
             </div>
             <div class="professional-report markdown-report" id="reportContent"></div>
+            <details class="admin-analysis-diagnostics is-hidden" id="adminAnalysisDiagnostics">
+              <summary>管理员诊断：本次结构化视觉事实</summary>
+              <p class="form-hint">这里显示模型返回的结构化事实与实际输入图片尺寸，不包含隐藏思维、图片 Base64、Prompt 或 API Key。</p>
+              <dl class="report-meta" id="adminImageInputMeta"></dl>
+              <h3>重点视觉事实</h3>
+              <pre id="adminVisualFactSummary"></pre>
+              <h3>本次 analysisPacket</h3>
+              <pre id="adminAnalysisPacket"></pre>
+            </details>
           </section>
 
           <p class="disclaimer">
@@ -594,13 +603,27 @@
 
             <form class="organization-form is-hidden" id="modelSettingsForm">
               <div class="field">
-                <label for="pipelineModeInput">工作模式</label>
-                <select id="pipelineModeInput" name="pipelineMode">
-                  <option value="single">single：单模型模式</option>
-                  <option value="split">split：视觉模型 + 文本模型</option>
+                <label for="analysisModeInput">分析模式</label>
+                <select id="analysisModeInput" name="analysisMode">
+                  <option value="single_multimodal">单多模态模型</option>
+                  <option value="legacy_dual_model">旧版双模型模式</option>
+                </select>
+              </div>
+              <div id="singleMultimodalFields">
+              <div class="field">
+                <label for="multimodalProviderInput">主分析 Provider</label>
+                <select id="multimodalProviderInput" name="multimodalProvider">
+                  <option value="openai">OpenAI</option>
+                  <option value="qwen">Qwen</option>
+                  <option value="deepseek">DeepSeek</option>
                 </select>
               </div>
               <div class="field">
+                <label for="multimodalModelInput">主分析模型名称</label>
+                <input id="multimodalModelInput" name="multimodalModel" placeholder="qwen3.8-max" />
+              </div>
+              </div>
+              <div class="field is-hidden">
                 <label for="singleProviderInput">单模型供应商</label>
                 <select id="singleProviderInput" name="singleProvider">
                   <option value="openai">openai</option>
@@ -608,10 +631,11 @@
                   <option value="doubao">doubao</option>
                 </select>
               </div>
-              <div class="field">
+              <div class="field is-hidden">
                 <label for="singleModelInput">单模型名称</label>
                 <input id="singleModelInput" name="singleModel" placeholder="gpt-4o-mini" />
               </div>
+              <div id="legacyDualModelFields">
               <div class="field">
                 <label for="visionProviderInput">视觉模型供应商</label>
                 <select id="visionProviderInput" name="visionProvider">
@@ -637,6 +661,11 @@
                 <label for="textModelInput">文本模型名称</label>
                 <input id="textModelInput" name="textModel" placeholder="gpt-4o-mini" />
               </div>
+              </div>
+              <label class="form-hint">
+                <input type="checkbox" name="allowTeacherModelSelection" />
+                允许教师选择本次分析模型（后端设置已预留，教师端入口本轮暂不开放）
+              </label>
             </form>
             <div class="dashboard-actions is-hidden" id="modelSettingsActions">
               <div class="type-stats-list" id="modelProviderStatusList"></div>
@@ -836,6 +865,7 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./analysis-fact-dto.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

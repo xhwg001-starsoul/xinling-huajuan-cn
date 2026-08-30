@@ -11,6 +11,7 @@ const providers = new Set(["openai", "qwen", "deepseek", "doubao"]);
 const singleProviders = new Set(["openai", "qwen", "doubao"]);
 const visionProviders = new Set(["openai", "qwen", "doubao"]);
 const textProviders = new Set(["openai", "deepseek", "qwen", "doubao"]);
+const multimodalProviders = new Set(["openai", "qwen", "deepseek"]);
 const forbiddenKeyPattern = /(?:apiKey|api_key|secret|token|password)/i;
 const modelNamePattern = /^[a-zA-Z0-9._:/@+-]{1,120}$/;
 
@@ -45,7 +46,20 @@ function sanitizeSettings(input = {}) {
   assertNoForbiddenFields(input);
   const defaults = normalizeModelConfig({});
   const pipelineMode = ["single", "split"].includes(input.pipelineMode) ? input.pipelineMode : defaults.pipelineMode;
+  const analysisMode = ["single_multimodal", "legacy_dual_model"].includes(input.analysisMode)
+    ? input.analysisMode
+    : defaults.analysisMode;
+  const multimodalProvider = safeProvider(input.multimodalProvider, multimodalProviders, defaults.multimodalProvider);
+  const multimodalModelFallback = multimodalProvider === "deepseek"
+    ? process.env.DEEPSEEK_VISION_MODEL || "deepseek-v4-flash-vision-exp"
+    : multimodalProvider === "openai"
+      ? input.singleModel || defaults.singleModel
+      : process.env.QWEN_MULTIMODAL_MODEL || "qwen3.8-max";
   return {
+    analysisMode,
+    multimodalProvider,
+    multimodalModel: safeModelName(input.multimodalModel, multimodalModelFallback),
+    allowTeacherModelSelection: input.allowTeacherModelSelection === true || input.allowTeacherModelSelection === 1,
     pipelineMode,
     singleProvider: safeProvider(input.singleProvider, singleProviders, defaults.singleProvider),
     singleModel: safeModelName(input.singleModel, defaults.singleModel),
@@ -58,6 +72,10 @@ function sanitizeSettings(input = {}) {
 
 function rowToSettings(row) {
   return {
+    analysisMode: row.analysis_mode || (row.pipeline_mode === "single" ? "single_multimodal" : "legacy_dual_model"),
+    multimodalProvider: row.multimodal_provider || row.single_provider || "qwen",
+    multimodalModel: row.multimodal_model || row.single_model || "qwen3.8-max",
+    allowTeacherModelSelection: row.allow_teacher_model_selection === 1,
     pipelineMode: row.pipeline_mode,
     singleProvider: row.single_provider,
     singleModel: row.single_model,
@@ -106,8 +124,9 @@ function upsertSettings({ organizationId, settings, updatedBy = null }) {
   db.prepare(`
     INSERT INTO system_model_settings (
       id, organization_id, pipeline_mode, single_provider, single_model, vision_provider,
-      vision_model, text_provider, text_model, updated_by, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      vision_model, text_provider, text_model, analysis_mode, multimodal_provider,
+      multimodal_model, allow_teacher_model_selection, updated_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(organization_id) DO UPDATE SET
       pipeline_mode = excluded.pipeline_mode,
       single_provider = excluded.single_provider,
@@ -116,6 +135,10 @@ function upsertSettings({ organizationId, settings, updatedBy = null }) {
       vision_model = excluded.vision_model,
       text_provider = excluded.text_provider,
       text_model = excluded.text_model,
+      analysis_mode = excluded.analysis_mode,
+      multimodal_provider = excluded.multimodal_provider,
+      multimodal_model = excluded.multimodal_model,
+      allow_teacher_model_selection = excluded.allow_teacher_model_selection,
       updated_by = excluded.updated_by,
       updated_at = excluded.updated_at
   `).run(
@@ -128,6 +151,10 @@ function upsertSettings({ organizationId, settings, updatedBy = null }) {
     safeSettings.visionModel,
     safeSettings.textProvider,
     safeSettings.textModel,
+    safeSettings.analysisMode,
+    safeSettings.multimodalProvider,
+    safeSettings.multimodalModel,
+    safeSettings.allowTeacherModelSelection ? 1 : 0,
     updatedBy,
     existing?.created_at || now,
     now,
@@ -161,12 +188,28 @@ function getOrganizationModelSettings(organizationId) {
 }
 
 function providerStatus(token) {
-  requireAdmin(token);
+  const admin = requireAdmin(token);
+  const settings = getOrganizationModelSettings(admin.organizationId);
+  const safeBaseUrl = (configuredValue, fallbackValue = "") => {
+    const value = configuredValue || fallbackValue;
+    try {
+      const url = new URL(String(value || ""));
+      return { host: url.host, source: configuredValue ? "app.env" : "default" };
+    } catch {
+      return { host: "未配置", source: configuredValue ? "app.env" : "default" };
+    }
+  };
   return {
-    qwen: { configured: Boolean(process.env.QWEN_API_KEY) },
-    deepseek: { configured: Boolean(process.env.DEEPSEEK_API_KEY) },
-    openai: { configured: Boolean(process.env.OPENAI_API_KEY) },
-    doubao: { configured: Boolean(process.env.DOUBAO_API_KEY) },
+    qwen: { configured: Boolean(process.env.QWEN_API_KEY), supportsVision: true, ...safeBaseUrl(process.env.QWEN_BASE_URL) },
+    deepseek: { configured: Boolean(process.env.DEEPSEEK_API_KEY), supportsVision: true, ...safeBaseUrl(process.env.DEEPSEEK_BASE_URL, "https://api.deepseek.com") },
+    openai: { configured: Boolean(process.env.OPENAI_API_KEY), supportsVision: true, ...safeBaseUrl(process.env.OPENAI_BASE_URL, "https://api.openai.com/v1") },
+    doubao: { configured: Boolean(process.env.DOUBAO_API_KEY), supportsVision: false, ...safeBaseUrl(process.env.DOUBAO_BASE_URL) },
+    selected: {
+      analysisMode: settings.analysisMode,
+      provider: settings.multimodalProvider,
+      model: settings.multimodalModel,
+      updatedAt: settings.updatedAt,
+    },
   };
 }
 

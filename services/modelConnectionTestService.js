@@ -4,9 +4,16 @@ const {
   resolveOrganizationModelRuntimeConfig,
   safeStageDiagnostic,
 } = require("./modelRuntimeConfigService");
-const { testQwenVisionConnection } = require("./providers/qwenVisionProvider");
+const {
+  CONNECTION_TEST_IMAGE,
+  extractChatResult,
+  extractOpenAIResult,
+  postJson,
+} = require("./providers/multimodal/common");
+const { parseJsonObject } = require("./htpVisualAnalysis");
 
 const MODEL_CONNECTION_TEST_TIMEOUT_MS = 30000;
+const VISION_TEST_PROMPT = '识别这张非学生测试图片中的基本物体，只输出 JSON：{"objects":["名称"]}';
 
 function testError(code, stage, statusCode = 400, httpStatus) {
   const error = new Error(code);
@@ -21,12 +28,7 @@ function testError(code, stage, statusCode = 400, httpStatus) {
 
 function safeErrorCode(error) {
   const message = String(error?.message || "model_test_failed");
-  const parts = message.split(":");
-  if (parts[0] === "qwen_request_failed") {
-    const safeParts = parts.slice(0, 3).map((part) => part.replace(/[^a-z0-9_.-]/gi, "").slice(0, 80));
-    return safeParts.filter(Boolean).join(":") || "qwen_request_failed";
-  }
-  return /^[a-z0-9_:.-]+$/i.test(message) ? message.slice(0, 160) : "model_test_failed";
+  return /^[a-z0-9_:.-]+$/i.test(message) ? message.slice(0, 180) : "model_test_failed";
 }
 
 function requireModelRuntime(token) {
@@ -45,103 +47,78 @@ function assertStageReady(stage) {
 
 async function callTextProvider(stage) {
   const definition = assertStageReady(stage);
-  if (!["openai", "deepseek", "qwen"].includes(stage.provider)) {
-    throw testError("provider_not_implemented", stage);
-  }
+  if (!["openai", "deepseek", "qwen"].includes(stage.provider)) throw testError("provider_not_implemented", stage);
+  const apiKey = process.env[definition.apiKeyEnv];
+  const body = stage.provider === "openai"
+    ? { model: stage.model, max_output_tokens: 8, input: [{ role: "user", content: [{ type: "input_text", text: "Reply only with: connection_ok" }] }] }
+    : { model: stage.model, messages: [{ role: "user", content: "Reply only with: connection_ok" }], max_tokens: 8, temperature: 0, stream: false };
+  await postJson({ provider: stage.provider, stage, apiKey, body, timeoutMs: MODEL_CONNECTION_TEST_TIMEOUT_MS });
+}
 
+async function callVisionProvider(stage) {
+  const definition = assertStageReady(stage);
+  if (!["openai", "qwen", "deepseek"].includes(stage.provider)) throw testError("provider_not_implemented", stage);
   const apiKey = process.env[definition.apiKeyEnv];
   const body = stage.provider === "openai"
     ? {
       model: stage.model,
-      max_output_tokens: 8,
-      input: [{ role: "user", content: [{ type: "input_text", text: "Reply only with: connection_ok" }] }],
+      max_output_tokens: 80,
+      input: [{ role: "user", content: [{ type: "input_text", text: VISION_TEST_PROMPT }, { type: "input_image", image_url: CONNECTION_TEST_IMAGE, detail: "high" }] }],
     }
     : {
       model: stage.model,
-      messages: [{ role: "user", content: "Reply only with: connection_ok" }],
-      max_tokens: 8,
+      messages: [{ role: "user", content: [{ type: "text", text: VISION_TEST_PROMPT }, { type: "image_url", image_url: { url: CONNECTION_TEST_IMAGE, ...(stage.provider === "deepseek" ? { detail: "high" } : {}) } }] }],
+      response_format: { type: "json_object" },
+      max_tokens: 80,
       temperature: 0,
       stream: false,
+      ...(stage.provider === "deepseek" ? { thinking: { type: "disabled" } } : {}),
     };
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), MODEL_CONNECTION_TEST_TIMEOUT_MS);
-  let response;
+  let data;
   try {
-    response = await fetch(stage.requestUrl, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    data = await postJson({ provider: stage.provider, stage, apiKey, body, timeoutMs: MODEL_CONNECTION_TEST_TIMEOUT_MS });
   } catch (error) {
-    if (error?.name === "AbortError") {
-      throw testError(`${stage.provider}_request_timeout`, stage);
+    if (stage.provider === "openai" && error.httpStatus === 400) {
+      throw testError("configured_openai_model_not_multimodal", stage, 400, 400);
     }
-    throw testError(`${stage.provider}_request_failed`, stage);
-  } finally {
-    clearTimeout(timeout);
+    throw error;
   }
-  if (!response.ok) {
-    let errorCode = `${stage.provider}_request_failed`;
-    try {
-      const data = await response.json();
-      const providerCode = String(data?.error?.code || data?.code || "").slice(0, 80);
-      if (providerCode) errorCode = `${errorCode}:${response.status}:${providerCode}`;
-      else errorCode = `${errorCode}:${response.status}`;
-    } catch {
-      errorCode = `${errorCode}:${response.status}`;
-    }
-    throw testError(errorCode, stage, 400, response.status);
-  }
+  const raw = stage.provider === "openai" ? extractOpenAIResult(data) : extractChatResult(data);
+  const parsed = parseJsonObject(raw.text, `${stage.provider}_vision_test_json_invalid`);
+  if (!Array.isArray(parsed.objects)) throw testError(`${stage.provider}_vision_test_json_invalid`, stage);
+  return { supportsVision: true, supportsJson: true };
 }
 
-function safeResult({ success, stage, startedAt, error }) {
+function safeResult({ success, stage, startedAt, capabilities, error }) {
   return {
     success,
     ...safeStageDiagnostic(stage),
-    configurationSource: {
-      settings: stage.settingsSource,
-      baseUrl: stage.baseUrlSource,
-    },
+    configurationSource: { settings: stage.settingsSource, baseUrl: stage.baseUrlSource },
     durationMs: Date.now() - startedAt,
+    supportsVision: Boolean(capabilities?.supportsVision),
+    supportsJson: Boolean(capabilities?.supportsJson),
     ...(error ? { error: safeErrorCode(error), httpStatus: error.httpStatus || undefined } : {}),
   };
 }
 
 async function testVisionRuntime(runtime) {
-  const stage = runtime.vision;
+  const stage = runtime.analysisMode === "single_multimodal" ? runtime.multimodal : runtime.vision;
   const startedAt = Date.now();
   try {
-    if (runtime.pipelineMode === "single" && stage.provider !== "openai") {
-      throw testError("provider_not_implemented", stage);
-    }
-    if (runtime.pipelineMode === "split" && !["openai", "qwen"].includes(stage.provider)) {
-      throw testError("provider_not_implemented", stage);
-    }
-    const definition = assertStageReady(stage);
-    if (definition.supportsVision === false || stage.provider === "deepseek") {
-      throw testError("provider_not_implemented", stage);
-    }
-    if (stage.provider === "qwen") {
-      await testQwenVisionConnection({ runtimeStage: stage });
-    } else if (stage.provider !== "openai") {
-      throw testError("provider_not_implemented", stage);
-    }
-    return safeResult({ success: true, stage, startedAt });
+    const capabilities = await callVisionProvider(stage);
+    return safeResult({ success: true, stage, startedAt, capabilities });
   } catch (error) {
     return safeResult({ success: false, stage, startedAt, error });
   }
 }
 
 async function testTextRuntime(runtime) {
-  const stage = runtime.text;
+  const stage = runtime.analysisMode === "single_multimodal" ? runtime.multimodal : runtime.text;
   const startedAt = Date.now();
   try {
-    if (runtime.pipelineMode === "single" && stage.provider !== "openai") {
-      throw testError("provider_not_implemented", stage);
-    }
-    if (runtime.pipelineMode === "split" && !["openai", "deepseek"].includes(stage.provider)) {
-      throw testError("provider_not_implemented", stage);
+    if (runtime.analysisMode === "single_multimodal") {
+      const capabilities = await callVisionProvider(stage);
+      return safeResult({ success: true, stage, startedAt, capabilities });
     }
     await callTextProvider(stage);
     return safeResult({ success: true, stage, startedAt });
@@ -161,14 +138,27 @@ async function testTextModel(token) {
 async function testModelPipeline(token) {
   const startedAt = Date.now();
   const runtime = requireModelRuntime(token);
-  const [vision, text] = await Promise.all([
-    testVisionRuntime(runtime),
-    testTextRuntime(runtime),
-  ]);
+  if (runtime.analysisMode === "single_multimodal") {
+    const vision = await testVisionRuntime(runtime);
+    return {
+      success: vision.success,
+      analysisMode: runtime.analysisMode,
+      configurationSource: runtime.settingsSource,
+      updatedAt: runtime.updatedAt,
+      visionStatus: vision.success ? "success" : "failed",
+      textStatus: "same_multimodal_call",
+      overallStatus: vision.success ? "success" : "failed",
+      durationMs: Date.now() - startedAt,
+      vision,
+      text: null,
+    };
+  }
+  const vision = await testVisionRuntime(runtime);
+  const text = await testTextRuntime(runtime);
   const success = Boolean(vision.success && text.success);
   return {
     success,
-    pipelineMode: runtime.pipelineMode,
+    analysisMode: runtime.analysisMode,
     configurationSource: runtime.settingsSource,
     updatedAt: runtime.updatedAt,
     visionStatus: vision.success ? "success" : "failed",
@@ -180,8 +170,4 @@ async function testModelPipeline(token) {
   };
 }
 
-module.exports = {
-  testVisionModel,
-  testTextModel,
-  testModelPipeline,
-};
+module.exports = { testVisionModel, testTextModel, testModelPipeline };

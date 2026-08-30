@@ -52,6 +52,10 @@ const printReportButton = document.querySelector("#printReportButton");
 const exportWordButton = document.querySelector("#exportWordButton");
 const exportTxtButton = document.querySelector("#exportTxtButton");
 const resetButton = document.querySelector("#resetButton");
+const adminAnalysisDiagnostics = document.querySelector("#adminAnalysisDiagnostics");
+const adminImageInputMeta = document.querySelector("#adminImageInputMeta");
+const adminVisualFactSummary = document.querySelector("#adminVisualFactSummary");
+const adminAnalysisPacket = document.querySelector("#adminAnalysisPacket");
 const contentTypeSelect = document.querySelector("#contentType");
 const todayCount = document.querySelector("#todayCount");
 const totalCount = document.querySelector("#totalCount");
@@ -111,6 +115,7 @@ const reloadModelSettingsButton = document.querySelector("#reloadModelSettingsBu
 const saveModelSettingsButton = document.querySelector("#saveModelSettingsButton");
 const modelSettingsMessage = document.querySelector("#modelSettingsMessage");
 const modelSettingsMeta = document.querySelector("#modelSettingsMeta");
+const modelProviderTestState = new Map();
 const modelProviderStatusList = document.querySelector("#modelProviderStatusList");
 const testVisionModelButton = document.querySelector("#testVisionModelButton");
 const testTextModelButton = document.querySelector("#testTextModelButton");
@@ -575,7 +580,11 @@ function setModelSettingsMessage(message, isError = false) {
 function modelSettingsFromForm() {
   const formData = new FormData(modelSettingsForm);
   return {
-    pipelineMode: formData.get("pipelineMode"),
+    analysisMode: formData.get("analysisMode"),
+    multimodalProvider: formData.get("multimodalProvider"),
+    multimodalModel: formData.get("multimodalModel"),
+    allowTeacherModelSelection: formData.get("allowTeacherModelSelection") === "on",
+    pipelineMode: formData.get("analysisMode") === "single_multimodal" ? "single" : "split",
     singleProvider: formData.get("singleProvider"),
     singleModel: formData.get("singleModel"),
     visionProvider: formData.get("visionProvider"),
@@ -586,13 +595,24 @@ function modelSettingsFromForm() {
 }
 
 function applyModelSettingsToForm(settings = {}) {
-  modelSettingsForm.pipelineMode.value = settings.pipelineMode || "single";
+  modelSettingsForm.analysisMode.value = settings.analysisMode || (settings.pipelineMode === "single" ? "single_multimodal" : "legacy_dual_model");
+  modelSettingsForm.multimodalProvider.value = settings.multimodalProvider || settings.singleProvider || "qwen";
+  modelSettingsForm.multimodalModel.value = settings.multimodalModel || settings.singleModel || "qwen3.8-max";
+  modelSettingsForm.allowTeacherModelSelection.checked = Boolean(settings.allowTeacherModelSelection);
   modelSettingsForm.singleProvider.value = settings.singleProvider || "openai";
   modelSettingsForm.singleModel.value = settings.singleModel || "gpt-4o-mini";
   modelSettingsForm.visionProvider.value = settings.visionProvider || "openai";
   modelSettingsForm.visionModel.value = settings.visionModel || "gpt-4o-mini";
   modelSettingsForm.textProvider.value = settings.textProvider || "openai";
   modelSettingsForm.textModel.value = settings.textModel || "gpt-4o-mini";
+  updateModelSettingsModeVisibility();
+}
+
+function updateModelSettingsModeVisibility() {
+  const single = modelSettingsForm?.analysisMode?.value === "single_multimodal";
+  document.querySelector("#singleMultimodalFields")?.classList.toggle("is-hidden", !single);
+  document.querySelector("#legacyDualModelFields")?.classList.toggle("is-hidden", single);
+  if (testTextModelButton) testTextModelButton.classList.toggle("is-hidden", single);
 }
 
 async function loadModelSettings() {
@@ -629,7 +649,12 @@ async function loadModelProviderStatus() {
     const label = document.createElement("span");
     const value = document.createElement("strong");
     label.textContent = labels[key] || key;
-    value.textContent = data.providers?.[key]?.configured ? "已配置" : "未配置";
+    const status = data.providers?.[key] || {};
+    const recent = modelProviderTestState.get(key);
+    const recentText = recent
+      ? `；最近测试：${recent.success ? "通过" : "失败"}，${recent.durationMs || 0}ms，${recent.testedAt}`
+      : "；最近测试：本次会话尚未测试";
+    value.textContent = `${status.configured ? "已配置" : "未配置"}；图像能力：${status.supportsVision ? "支持" : "不支持"}；Base URL：${status.host || "未配置"}（${status.source || "-"}）${recentText}`;
     row.append(label, value);
     modelProviderStatusList.appendChild(row);
   }
@@ -665,7 +690,7 @@ function describeModelTestResult(result = {}) {
   if (result.overallStatus) {
     return `组合测试：${result.overallStatus}；视觉：${result.visionStatus}；文本：${result.textStatus}；耗时 ${result.durationMs || 0}ms`;
   }
-  if (result.success) return `${result.provider || "-"} / ${result.model || "-"}：连接测试通过；耗时 ${result.durationMs || 0}ms`;
+  if (result.success) return `${result.provider || "-"} / ${result.model || "-"}：连接测试通过；图像=${result.supportsVision ? "支持" : "未验证"}；JSON=${result.supportsJson ? "支持" : "未验证"}；耗时 ${result.durationMs || 0}ms；测试时间 ${new Date().toLocaleString("zh-CN")}`;
   return `${result.provider || "-"} / ${result.model || "-"}：连接测试失败：${result.error || "unknown_error"}；耗时 ${result.durationMs || 0}ms`;
 }
 
@@ -682,6 +707,16 @@ async function runModelTest(path) {
     const data = await cnApi(path, { method: "POST", signal: controller.signal });
     const result = data.result || {};
     const stages = result.overallStatus ? [result.vision, result.text] : [result];
+    for (const stage of stages.filter(Boolean)) {
+      if (stage.provider) {
+        modelProviderTestState.set(stage.provider, {
+          success: Boolean(stage.success),
+          durationMs: stage.durationMs || 0,
+          testedAt: new Date().toLocaleString("zh-CN"),
+        });
+      }
+    }
+    await loadModelProviderStatus();
     const diagnostics = stages
       .filter(Boolean)
       .map((stage) => {
@@ -1211,6 +1246,15 @@ saveModelSettingsButton.addEventListener("click", async (event) => {
 testVisionModelButton?.addEventListener("click", () => runModelTest("/api/cn-admin-test-vision-model"));
 testTextModelButton?.addEventListener("click", () => runModelTest("/api/cn-admin-test-text-model"));
 testModelPipelineButton?.addEventListener("click", () => runModelTest("/api/cn-admin-test-model-pipeline"));
+modelSettingsForm?.analysisMode?.addEventListener("change", updateModelSettingsModeVisibility);
+modelSettingsForm?.multimodalProvider?.addEventListener("change", () => {
+  const defaults = {
+    openai: modelSettingsForm.singleModel.value || "gpt-4o-mini",
+    qwen: "qwen3.8-max",
+    deepseek: "deepseek-v4-flash-vision-exp",
+  };
+  modelSettingsForm.multimodalModel.value = defaults[modelSettingsForm.multimodalProvider.value] || "";
+});
 refreshSystemStatusButton?.addEventListener("click", () => loadSystemStatus().catch((error) => { if (systemStatusMessage) systemStatusMessage.textContent = error.message || "状态读取失败。"; }));
 createBackupButton?.addEventListener("click", () => createBackup().catch((error) => { if (backupMessage) backupMessage.textContent = error.message || "备份失败。"; }));
 refreshBackupsButton?.addEventListener("click", () => loadBackups().catch((error) => { if (backupMessage) backupMessage.textContent = error.message || "备份列表读取失败。"; }));
@@ -1632,6 +1676,52 @@ function renderReport(payload) {
   };
   renderReportMeta();
   reportContent.innerHTML = markdownToHtml(markdown || `# ${title}\n\n报告暂未生成内容，请稍后再试。`);
+  renderAdminAnalysisDiagnostics(payload);
+}
+
+function renderAdminAnalysisDiagnostics(payload = {}) {
+  const visible = isAdmin() && payload.analysisPacket && payload.adminDiagnostics;
+  adminAnalysisDiagnostics?.classList.toggle("is-hidden", !visible);
+  if (!visible) {
+    if (adminImageInputMeta) adminImageInputMeta.textContent = "";
+    if (adminVisualFactSummary) adminVisualFactSummary.textContent = "";
+    if (adminAnalysisPacket) adminAnalysisPacket.textContent = "";
+    return;
+  }
+  const diagnostics = window.XinlingAdminDiagnostics?.normalizeAdminDiagnosticsPayload(payload)
+    || payload.adminDiagnostics
+    || {};
+  const original = diagnostics.inputImage?.original || {};
+  const sent = diagnostics.inputImage?.sentToModel || {};
+  const operations = diagnostics.inputImage?.preprocessOperations || [];
+  if (adminImageInputMeta) {
+    adminImageInputMeta.textContent = "";
+    const rows = [
+      ["原图尺寸", original.width && original.height ? `${original.width} x ${original.height}px` : "无法识别"],
+      ["原图字节数", Number.isFinite(original.byteLength) ? `${original.byteLength} bytes` : "无法识别"],
+      ["原图 MIME", original.mimeType || "无法识别"],
+      ["传给模型的尺寸", sent.width && sent.height ? `${sent.width} x ${sent.height}px` : "无法识别"],
+      ["传给模型的字节数", Number.isFinite(sent.byteLength) ? `${sent.byteLength} bytes` : "无法识别"],
+      ["传给模型的 MIME", sent.mimeType || "无法识别"],
+      ["预处理操作", operations.length ? operations.join("、") : "无（原图原样发送）"],
+    ];
+    for (const [label, value] of rows) {
+      const row = document.createElement("div");
+      const term = document.createElement("dt");
+      const detail = document.createElement("dd");
+      term.textContent = label;
+      detail.textContent = value;
+      row.append(term, detail);
+      adminImageInputMeta.appendChild(row);
+    }
+  }
+  adminVisualFactSummary.textContent = JSON.stringify({
+    model: diagnostics.model || {},
+    criticalVisualFacts: diagnostics.criticalVisualFacts || {},
+    needsHumanConfirmation: diagnostics.needsHumanConfirmation || [],
+    factConsistency: diagnostics.factConsistency || {},
+  }, null, 2);
+  adminAnalysisPacket.textContent = JSON.stringify(payload.analysisPacket, null, 2);
 }
 
 function getCurrentReportMeta() {
@@ -1853,7 +1943,17 @@ analyzeButton.addEventListener("click", async () => {
       }),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "OpenAI API 调用失败，请稍后再试。");
+    if (!response.ok) {
+      if (isAdmin() && data.error === "model_call_failed:report_fact_conflict" && data.adminDiagnostics && data.analysisPacket) {
+        reportTitle.textContent = "报告事实一致性检查未通过";
+        reportContent.textContent = "报告文字与结构化视觉事实存在冲突，系统已阻止显示该报告。请展开下方管理员诊断查看冲突事实。";
+        renderAdminAnalysisDiagnostics(data);
+        loadingCard.classList.add("is-hidden");
+        reportCard.classList.remove("is-hidden");
+        reportCard.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      throw new Error(data.error || "OpenAI API 调用失败，请稍后再试。");
+    }
 
     renderReport(data);
     await saveUsageRecord(teacherProfile.contentType);

@@ -8,6 +8,7 @@ const { getBearerToken } = require("./_http");
 const { getRuntimeMode } = require("../config/runtimeMode");
 const { requireCurrentUser } = require("../services/authService");
 const { recordUsage } = require("../services/usageService");
+const { buildSafeAnalysisDiagnostics } = require("../services/imageInputMetadata");
 
 function accessCodeFrom(req, body) {
   return req.headers["x-access-code"] || body.accessCode || "";
@@ -85,10 +86,26 @@ async function handler(req, res) {
           user: authenticatedCnUser,
           contentType: profile.contentType || profile.desiredHelp || profile.reportMode,
           modelConfig,
+          analysisResult: result,
         });
       } catch {
         console.warn("usage_record_write_failed");
       }
+    }
+    if (runtime.usesCnAuth && authenticatedCnUser) {
+      const { observationRecord, ...withoutLegacyPacket } = result;
+      if (authenticatedCnUser.role === "admin") {
+        return sendJson(res, 200, {
+          ...withoutLegacyPacket,
+          adminDiagnostics: buildSafeAnalysisDiagnostics({ analysisResult: result, imageDataUrl: image }),
+        });
+      }
+      const { analysisPacket, factSnapshot, ...teacherResult } = withoutLegacyPacket;
+      if (teacherResult.diagnostics) {
+        const { factConsistency, ...teacherDiagnostics } = teacherResult.diagnostics;
+        teacherResult.diagnostics = teacherDiagnostics;
+      }
+      return sendJson(res, 200, teacherResult);
     }
     return sendJson(res, 200, result);
   } catch (error) {
@@ -107,6 +124,25 @@ async function handler(req, res) {
         error: "provider_not_implemented",
         message: "当前模型供应商已保存，但该供应商的真实调用适配尚未完成。请暂时切回 OpenAI，或继续接入国内模型。",
       });
+    }
+    if (message === "report_fact_conflict") {
+      if (runtime.usesCnAuth && authenticatedCnUser?.role === "admin" && error.analysisPacket) {
+        const analysisResult = {
+          mode: error.mode || "",
+          provider: error.provider || "",
+          model: error.model || "",
+          promptVersion: error.promptVersion || "",
+          analysisPacket: error.analysisPacket,
+          factSnapshot: error.factSnapshot,
+          diagnostics: { factConsistency: error.factConsistency },
+        };
+        return sendJson(res, 409, {
+          error: "model_call_failed:report_fact_conflict",
+          analysisPacket: error.analysisPacket,
+          adminDiagnostics: buildSafeAnalysisDiagnostics({ analysisResult, imageDataUrl: image }),
+        });
+      }
+      return sendJson(res, 409, { error: "model_call_failed:report_fact_conflict" });
     }
     return sendJson(res, 500, { error: `model_call_failed:${message}` });
   }

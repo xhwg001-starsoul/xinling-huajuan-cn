@@ -10,6 +10,7 @@ const PROVIDERS = {
     defaultVisionModel: "gpt-4o-mini",
     defaultTextModel: "gpt-4o-mini",
     implemented: true,
+    supportsVision: true,
   },
   deepseek: {
     name: "DeepSeek",
@@ -18,7 +19,8 @@ const PROVIDERS = {
     defaultBaseUrl: "https://api.deepseek.com",
     defaultTextModel: "deepseek-chat",
     implemented: true,
-    supportsVision: false,
+    defaultVisionModel: "deepseek-v4-flash-vision-exp",
+    supportsVision: true,
   },
   qwen: {
     name: "Qwen",
@@ -113,6 +115,12 @@ function resolveModelRuntimeConfig(settings = {}, { source } = {}) {
     settingsSource,
     updatedAt,
   });
+  const multimodal = stageRuntime({
+    provider: modelConfig.multimodalProvider,
+    model: modelConfig.multimodalModel,
+    settingsSource,
+    updatedAt,
+  });
   const vision = modelConfig.pipelineMode === "single"
     ? { ...single }
     : stageRuntime({
@@ -130,11 +138,13 @@ function resolveModelRuntimeConfig(settings = {}, { source } = {}) {
       updatedAt,
     });
   return {
+    analysisMode: modelConfig.analysisMode,
     pipelineMode: modelConfig.pipelineMode,
     modelConfig,
     settingsSource,
     updatedAt,
     single,
+    multimodal,
     vision,
     text,
   };
@@ -159,7 +169,9 @@ function safeStageDiagnostic(stage) {
 
 function safeRuntimeDiagnostic(runtimeConfig) {
   return {
+    analysisMode: runtimeConfig.analysisMode,
     pipelineMode: runtimeConfig.pipelineMode,
+    multimodal: safeStageDiagnostic(runtimeConfig.multimodal),
     vision: safeStageDiagnostic(runtimeConfig.vision),
     text: safeStageDiagnostic(runtimeConfig.text),
   };

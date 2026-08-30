@@ -61,6 +61,9 @@ function initializeSchema(db) {
       text_model TEXT NOT NULL DEFAULT '',
       single_provider TEXT NOT NULL DEFAULT '',
       single_model TEXT NOT NULL DEFAULT '',
+      analysis_mode TEXT NOT NULL DEFAULT 'legacy_dual_model',
+      provider TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL,
       FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
@@ -76,6 +79,10 @@ function initializeSchema(db) {
       vision_model TEXT NOT NULL DEFAULT '',
       text_provider TEXT NOT NULL DEFAULT 'deepseek',
       text_model TEXT NOT NULL DEFAULT '',
+      analysis_mode TEXT NOT NULL DEFAULT 'legacy_dual_model',
+      multimodal_provider TEXT NOT NULL DEFAULT 'qwen',
+      multimodal_model TEXT NOT NULL DEFAULT 'qwen3.8-max',
+      allow_teacher_model_selection INTEGER NOT NULL DEFAULT 0 CHECK (allow_teacher_model_selection IN (0, 1)),
       updated_by TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -117,6 +124,9 @@ function runMigrations(db) {
   ensureColumn(db, "usage_records", "text_model", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, "usage_records", "single_provider", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, "usage_records", "single_model", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, "usage_records", "analysis_mode", "TEXT NOT NULL DEFAULT 'legacy_dual_model'");
+  ensureColumn(db, "usage_records", "provider", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, "usage_records", "model", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, "usage_records", "created_at", "TEXT");
   ensureColumn(db, "system_model_settings", "organization_id", "TEXT");
   ensureColumn(db, "system_model_settings", "pipeline_mode", "TEXT NOT NULL DEFAULT 'split'");
@@ -126,6 +136,10 @@ function runMigrations(db) {
   ensureColumn(db, "system_model_settings", "vision_model", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, "system_model_settings", "text_provider", "TEXT NOT NULL DEFAULT 'deepseek'");
   ensureColumn(db, "system_model_settings", "text_model", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, "system_model_settings", "analysis_mode", "TEXT NOT NULL DEFAULT 'legacy_dual_model'");
+  ensureColumn(db, "system_model_settings", "multimodal_provider", "TEXT NOT NULL DEFAULT 'qwen'");
+  ensureColumn(db, "system_model_settings", "multimodal_model", "TEXT NOT NULL DEFAULT 'qwen3.8-max'");
+  ensureColumn(db, "system_model_settings", "allow_teacher_model_selection", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "system_model_settings", "updated_by", "TEXT");
   ensureColumn(db, "system_model_settings", "created_at", "TEXT");
   ensureColumn(db, "system_model_settings", "updated_at", "TEXT");

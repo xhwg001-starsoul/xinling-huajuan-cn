@@ -170,6 +170,14 @@ DOMESTIC_DATABASE_URL
 - 模型配置状态只显示 Qwen、DeepSeek、OpenAI、豆包 API 是否已配置，不显示 Key 内容、长度、前后缀或环境变量列表。
 - 模型连接测试不使用学生图片、学生资料、完整 Prompt 或正式报告内容，也不会写入 `usage_records`。
 
+## 统一多模态分析架构
+
+- 管理员可在 SQLite 模型设置中选择 `single_multimodal` 或 `legacy_dual_model`。旧版 Qwen 视觉到 DeepSeek 文本链完整保留，不作为隐藏回退。
+- 单多模态模式支持 OpenAI、Qwen 和 DeepSeek Vision，由所选模型在一次调用中直接读取原图并生成结构化分析包与最终报告。
+- 默认建议模型为 Qwen `qwen3.8-max`、DeepSeek Vision `deepseek-v4-flash-vision-exp`；OpenAI 沿用管理员当前配置的模型，并通过真实图像连接测试确认其多模态能力。
+- API Key 与 Base URL 仍只来自 `.env.local`、`app.env` 或服务器环境变量，不保存到 SQLite。模型设置与使用记录只保存安全的 provider、model 和分析模式元数据。
+- `allow_teacher_model_selection` 已作为后台兼容字段预留且默认关闭，本轮没有向普通教师页面暴露模型技术选项。
+
 ## v0.9-cn-school-lan-deployment：学校 Windows 局域网部署版
 
 - 新增 `APP_MODE=school`，school 模式默认监听 `0.0.0.0:4185`，development 模式仍保持 `127.0.0.1:4185`。

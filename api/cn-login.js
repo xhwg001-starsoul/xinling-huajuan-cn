@@ -13,6 +13,13 @@ async function handler(req, res) {
     const result = await login({ username: body.username, password: body.password, req });
     return sendJson(res, 200, { ok: true, ...result });
   } catch (error) {
+    console.error("cn_login_error", {
+      name: String(error?.name || "Error").slice(0, 80),
+      code: String(error?.code || error?.message || "cn_login_failed")
+        .replace(/[^a-zA-Z0-9_.-]/g, "_")
+        .slice(0, 120),
+      statusCode: Number(error?.statusCode) || 500,
+    });
     return sendSafeError(res, error, "cn_login_failed");
   }
 }

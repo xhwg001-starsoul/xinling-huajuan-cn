@@ -1,8 +1,9 @@
 // 模型适配器层：把具体模型供应商封装在后端，方便以后在 OpenAI、Qwen、豆包、智谱、讯飞、StepFun 等模型之间切换。
 // 所有 API Key 只能从后端环境变量读取，不能写进前端 HTML、JS 或可公开访问的配置文件。
 
-const { generateQwenVisionObservation } = require("./services/providers/qwenVisionProvider");
+const { generateQwenVisionAnalysis } = require("./services/providers/qwenVisionProvider");
 const { PROVIDERS, resolveModelRuntimeConfig } = require("./services/modelRuntimeConfigService");
+const { FACT_FIDELITY_RULES } = require("./services/prompts/factFidelityRules");
 
 const CONTENT_TYPES = {
   dialogue: "心灵对话",
@@ -12,6 +13,14 @@ const CONTENT_TYPES = {
   counselingRecord: "辅导记录初稿",
   riskReferral: "风险提示与转介建议",
 };
+
+const TEXT_ANALYSIS_SYSTEM_PROMPT = `你是一名专业、谨慎、有温度的学校心理辅导辅助分析助手。你只基于用户提供的纯文本材料生成辅助报告，不做医学诊断，不夸大结论。
+
+上游 hypothesis_candidates 只是多模态模型产生的待验证工作假设，不是事实。不得因为上游模型已经提出，就把它写成确定结论。
+必须保留每个重要视觉判断的 confidence：high 可进入候选主题；medium 只能作为带不确定性的次级线索；low 不得成为心理解释依据。
+alternative_explanations、supporting_information_needed 和 disconfirming_information 都是分析边界，不得省略其含义或把候选假设单向强化。
+当前产品尚未完成 Inquiry 验证。最终报告必须使用“可能”“值得进一步了解”“可以关注”“建议通过沟通确认”等探索性表达，不得假装已经完成访谈验证。
+若 safety.safety_followup_needed=true，只能建议由受过训练的人员进行直接人工核查，不得生成概率、分数、具体事件推断或诊断。`;
 
 function normalizeContentType(profile = {}) {
   const raw = profile.contentType || profile.desiredHelp || profile.reportMode || CONTENT_TYPES.dialogue;
@@ -219,7 +228,7 @@ async function callDeepSeek({ prompt, image, step, maxOutputTokens, modelConfig,
       messages: [
         {
           role: "system",
-          content: "你是一名专业、谨慎、有温度的学校心理辅导辅助分析助手。你只基于用户提供的纯文本材料生成辅助报告，不做医学诊断，不夸大结论。",
+          content: TEXT_ANALYSIS_SYSTEM_PROMPT,
         },
         { role: "user", content: prompt },
       ],
@@ -233,7 +242,7 @@ async function callDeepSeek({ prompt, image, step, maxOutputTokens, modelConfig,
   try {
     data = responseText ? JSON.parse(responseText) : {};
   } catch {
-    throw new Error(`模型返回了非 JSON 内容：${responseText.slice(0, 300)}`);
+    throw new Error("deepseek_response_invalid_json");
   }
   if (!response.ok) {
     throw new Error(data.error?.message || `${providerConfig("deepseek").name} 调用失败`);
@@ -261,7 +270,7 @@ async function callDeepSeekText({ prompt, image, step, maxOutputTokens, modelCon
       messages: [
         {
           role: "system",
-          content: "你是一名专业、谨慎、有温度的学校心理辅导辅助分析助手。你只基于用户提供的纯文本材料生成辅助报告，不做医学诊断，不夸大结论。",
+          content: TEXT_ANALYSIS_SYSTEM_PROMPT,
         },
         { role: "user", content: prompt },
       ],
@@ -275,7 +284,7 @@ async function callDeepSeekText({ prompt, image, step, maxOutputTokens, modelCon
   try {
     data = responseText ? JSON.parse(responseText) : {};
   } catch {
-    throw new Error(`模型返回了非 JSON 内容：${responseText.slice(0, 300)}`);
+    throw new Error("deepseek_response_invalid_json");
   }
   if (!response.ok) {
     const summary = summarizeDeepSeekError(data, `${providerConfig("deepseek").name} 调用失败`);
@@ -315,7 +324,7 @@ async function callModel({ provider, prompt, image, step, maxOutputTokens, model
       error.provider = "qwen";
       throw error;
     }
-    const observation = await generateQwenVisionObservation({
+    const observation = await generateQwenVisionAnalysis({
       image,
       modelConfig,
       runtimeStage: modelRuntimeConfig.vision,
@@ -356,13 +365,17 @@ function buildDialoguePrompt(profile, observationRecord) {
 重要定位：
 - 这不是心理诊断，不是医学诊断，也不是治疗建议。
 - 这是基于图画和背景资料生成的心理观察与陪伴性推测。
-- 可以比专业观察报告更大胆、更诚恳地提出假设，但必须保留边界。
+- 可以比专业观察报告更细腻地呈现待验证假设，但必须保留边界、替代解释和可被推翻的空间。
 - 文字要温柔、细腻、有文学性、有共情力，但不能脱离画面证据。
 
 报告模式：${modeText(profile)}
 
-第一步视觉模型生成的客观画面观察记录：
+第一步视觉模型生成的完整结构化分析资料包（包含客观观察、强制复核、显著特征、待验证候选假设、替代解释、证伪信息、心理资源、追问和安全标记）：
 ${observationRecord}
+
+使用资料包时必须遵守：hypothesis_candidates 不是事实；low confidence 视觉判断不得成为心理解释依据；不得省略 alternative_explanations 和 disconfirming_information 所表达的不确定性；不得假装 Inquiry 已完成。
+
+${FACT_FIDELITY_RULES}
 
 教师填写的背景资料：
 - 学生编号或化名：${profile.studentAlias || "未填写"}
@@ -378,9 +391,9 @@ ${observationRecord}
 
 心灵对话写作原则：
 1. 先看见画面，再走入内心。每一个较重要的推测，都要来自画面中的某个细节或教师提供的背景资料，不要凭空发挥。
-2. 允许更大胆的心理假设。可以写“我会倾向于把这里理解为一种压抑已久的紧张”“这个小小的人物，也许不是软弱，而是在努力保护自己不被外界吞没”“如果画面中的封闭感也出现在现实生活里，那么这个孩子可能正在用退缩的方式求得安全”。
+2. 允许呈现有探索价值的心理假设，但必须写成待验证理解，并同时说明替代解释与需要进一步了解的信息。可以写“这一线索可能与紧张体验有关，也可能来自绘画习惯或当时情境，建议通过沟通确认”。
 3. 必须保留边界。请自然使用“也许”“可能”“似乎”“我会倾向于理解为”“这需要进一步访谈确认”“这不是结论，而是一个值得温柔核对的线索”等表达。
-4. 要敢于指出可能的问题。如果画面或背景资料中出现明显线索，可以较明确地指出可能存在安全感不足、情绪压抑、自我表达受限、关系中的孤独感、对家庭或学校环境的紧张、行动力不足、自我形象低弱、过度自我保护、渴望被看见却又害怕暴露、内心冲突、逃避、退缩或无力感。
+4. 对画面与背景共同支持且置信度足够的线索，可以提出值得关注的主题，但不得把安全感、情绪、人际、自我感或压力主题写成已证实事实；必须说明证据、替代解释和建议核对的问题。
 5. 不能写成诊断。禁止使用“你有抑郁症”“你人格有问题”“你家庭一定不幸福”“你心理异常”“你有严重创伤”等绝对化、标签化、恐吓式表达。
 6. 不要空泛鼓励。不要只写“你很好”“你要相信自己”这类空话，除非能从具体画面或资料中看到依据。
 7. 要能写出画面背后可能隐藏的情绪、关系、渴望、防御、孤独、压力、矛盾或求助信号。
@@ -452,8 +465,12 @@ function buildProfessionalReportPrompt(profile, observationRecord) {
 文档标题：${plan.title}
 报告模式：${modeText(profile)}
 
-第一步视觉模型生成的客观画面观察记录：
+第一步视觉模型生成的完整结构化分析资料包（包含客观观察、强制复核、显著特征、待验证候选假设、替代解释、证伪信息、心理资源、追问和安全标记）：
 ${observationRecord}
+
+使用资料包时必须遵守：hypothesis_candidates 不是事实；high confidence 可进入候选主题，medium 只能作为次级不确定线索，low 不得成为心理解释依据；不得省略 alternative_explanations、supporting_information_needed 和 disconfirming_information；不得假装 Inquiry 已完成。
+
+${FACT_FIDELITY_RULES}
 
 教师填写的背景资料：
 - 学生编号或化名：${profile.studentAlias || "未填写"}
@@ -549,5 +566,11 @@ async function generateTeacherReport({ image, profile, modelConfig, modelRuntime
 
 module.exports = {
   PROVIDERS,
+  buildDialoguePrompt,
+  buildProfessionalReportPrompt,
+  documentTitleFromMarkdown,
+  isDialogueMode,
+  normalizeContentType,
+  selectedPlan,
   generateTeacherReport,
 };
