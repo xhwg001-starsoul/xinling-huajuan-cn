@@ -1,8 +1,9 @@
 const assert = require("node:assert/strict");
 const { createMultimodalProviderRegistry } = require("../services/multimodalProviderRegistry");
-const { standardizeMultimodalResult } = require("../services/multimodalAnalysisResult");
+const { reportEndingLooksIncomplete, standardizeMultimodalResult } = require("../services/multimodalAnalysisResult");
 const { generateAnalysisWithModelRouter } = require("../services/modelRouter");
-const { analysisTimeoutMs, CONNECTION_TEST_IMAGE } = require("../services/providers/multimodal/common");
+const { analysisTimeoutMs, CONNECTION_TEST_IMAGE, postChatStream } = require("../services/providers/multimodal/common");
+const { QWEN_MULTIMODAL_MAX_TOKENS } = require("../services/providers/multimodal/qwenMultimodalProvider");
 const { imageInputMetadata, visualFactSummary } = require("../services/imageInputMetadata");
 
 function observation(id, confidence = "high", feature = "树干") {
@@ -42,8 +43,13 @@ function stage(provider, model) {
 
 function runtime(provider, model) {
   const multimodal = stage(provider, model);
+  const report = stage("deepseek", "deepseek-chat");
   const modelConfig = { analysisMode: "single_multimodal", multimodalProvider: provider, multimodalModel: model, allowTeacherModelSelection: false, pipelineMode: "single", singleProvider: "openai", singleModel: "gpt-4o-mini", visionProvider: "qwen", visionModel: "qwen-old", textProvider: "deepseek", textModel: "deepseek-old" };
-  return { analysisMode: "single_multimodal", modelConfig, multimodal, single: multimodal, vision: multimodal, text: multimodal, settingsSource: "sqlite" };
+  return { analysisMode: "single_multimodal", modelConfig, multimodal, report, single: multimodal, vision: multimodal, text: report, settingsSource: "sqlite" };
+}
+
+async function mockReport() {
+  return { markdown: "# 测试报告\n\n图中烟囱有两团烟，树干中等偏粗，树冠相对较大。树干有三个树疤样结构，但不能据此确定具体经历。", provider: "deepseek", model: "deepseek-chat", usage: { prompt_tokens: 10, completion_tokens: 20 }, finishReason: "stop", truncated: false, performance: { providerLatencyMs: 1, maxTokens: 7000, responseBodyComplete: true } };
 }
 
 async function main() {
@@ -55,6 +61,30 @@ async function main() {
     assert.equal(analysisTimeoutMs(undefined), 240000);
     assert.equal(analysisTimeoutMs(1000), 30000);
     assert.equal(analysisTimeoutMs(900000), 600000);
+    assert.equal(QWEN_MULTIMODAL_MAX_TOKENS, 12000);
+    assert.equal(reportEndingLooksIncomplete("如果允许我用一个比喻：这幅画像一个乖"), true);
+    assert.equal(reportEndingLooksIncomplete("这是一份完整报告。"), false);
+    const encoder = new TextEncoder();
+    const streamed = await postChatStream({
+      provider: "qwen",
+      stage: stage("qwen", "qwen3.8-max"),
+      apiKey: "offline-qwen-key",
+      body: { model: "qwen3.8-max" },
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        body: {
+          async *[Symbol.asyncIterator]() {
+            yield encoder.encode('data: {"choices":[{"delta":{"content":"{\\"ok\\":true}"},"finish_reason":null}]}\n\n');
+            yield encoder.encode('data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":4}}\n\ndata: [DONE]\n\n');
+          },
+        },
+      }),
+    });
+    assert.equal(streamed.performance.responseBodyComplete, true);
+    assert.equal(streamed.performance.streamDoneReceived, true);
+    assert.equal(streamed.finishReason, "stop");
+    assert.equal(streamed.usage.completion_tokens, 4);
     assert.deepEqual(imageInputMetadata(CONNECTION_TEST_IMAGE), { mimeType: "image/png", width: 64, height: 64, bytes: 455 });
     const facts = visualFactSummary(packet());
     assert.equal(facts.smokeCloudDecision.smoke_present, "yes");
@@ -76,12 +106,12 @@ async function main() {
 
     for (const [provider, model] of [["qwen", "qwen3.8-max"], ["deepseek", "deepseek-v4-flash-vision-exp"], ["openai", "configured-openai-model"]]) {
       requests.length = 0;
-      const result = await generateAnalysisWithModelRouter({ images: ["data:image/png;base64,AA=="], userInputs: { contentType: "professional" }, modelRuntimeConfig: runtime(provider, model), providerRegistry: registry });
+      const result = await generateAnalysisWithModelRouter({ images: ["data:image/png;base64,AA=="], userInputs: { contentType: "professional" }, modelRuntimeConfig: runtime(provider, model), providerRegistry: registry, reportGenerator: mockReport });
       assert.equal(requests.length, 1);
       assert.equal(requests[0].body.model, model);
       assert.match(JSON.stringify(requests[0].body), /data:image\/png;base64,AA==/);
-      assert.equal(result.provider, provider);
-      assert.equal(result.mode, "single_multimodal");
+      assert.equal(result.provider, `${provider}->deepseek`);
+      assert.equal(result.mode, "split_report_pipeline");
     }
     console.log("ok - 2/3/4 三个单模型 Provider 各只接收原图并调用一次");
 
@@ -100,6 +130,16 @@ async function main() {
     assert.doesNotMatch(normalized.reportMarkdown, /确定.*心理创伤|确诊创伤/);
     assert.equal(normalized.analysisPacket.hypothesis_candidates[0].alternative_explanations[0], "绘画习惯");
     assert.equal(normalized.analysisPacket.priority_questions[0].question_id, "Q1");
+    assert.equal(normalized.diagnostics.performance.reportTruncation, false);
+    const truncatedReport = standardizeMultimodalResult({
+      rawText: fullResponse("# 心灵对话\n\n如果允许我用一个比喻：这幅画像一个乖"),
+      provider: "qwen",
+      model: "qwen3.8-max",
+      finishReason: "stop",
+      performance: { responseBodyComplete: true, maxTokens: 12000 },
+    });
+    assert.equal(truncatedReport.diagnostics.performance.reportTruncation, true);
+    assert.equal(truncatedReport.diagnostics.performance.reportTruncationReason, "incomplete_ending");
     console.log("ok - 9/11 树疤边界与 Inquiry 结构完整保留");
 
     const low = packet();
@@ -122,7 +162,7 @@ async function main() {
     const originalInfo = console.info;
     console.info = (value) => logs.push(String(value));
     try {
-      await generateAnalysisWithModelRouter({ images: ["data:image/png;base64,SENSITIVEIMAGE"], userInputs: { teacherConcern: "SENSITIVEBACKGROUND" }, modelRuntimeConfig: runtime("qwen", "qwen3.8-max"), providerRegistry: { get: () => ({ analyzeDrawing: async () => ({ ...normalized, diagnostics: { requestId: "safe", finishReason: "stop", truncated: false } }) }) } });
+      await generateAnalysisWithModelRouter({ images: ["data:image/png;base64,SENSITIVEIMAGE"], userInputs: { teacherConcern: "SENSITIVEBACKGROUND" }, modelRuntimeConfig: runtime("qwen", "qwen3.8-max"), providerRegistry: { get: () => ({ analyzeDrawing: async () => ({ ...normalized, diagnostics: { requestId: "safe", finishReason: "stop", truncated: false } }) }) }, reportGenerator: mockReport });
     } finally {
       console.info = originalInfo;
     }

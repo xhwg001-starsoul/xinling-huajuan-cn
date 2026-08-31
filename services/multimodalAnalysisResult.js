@@ -1,6 +1,7 @@
 const { parseJsonObject, sanitizeV2AnalysisPackage } = require("./htpVisualAnalysis");
 const { assertReportFactConsistency } = require("./analysisConsistencyService");
 const { HTP_MULTIMODAL_FULL_V1 } = require("./prompts/htpMultimodalPrompt");
+const { buildFactSnapshot, importantFactsNeedingConfirmation } = require("./visualFactSnapshot");
 
 function tokenNumber(value) {
   return Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -9,15 +10,30 @@ function tokenNumber(value) {
 function normalizeUsage(usage = {}) {
   const inputTokens = tokenNumber(usage.inputTokens ?? usage.input_tokens ?? usage.prompt_tokens);
   const outputTokens = tokenNumber(usage.outputTokens ?? usage.output_tokens ?? usage.completion_tokens);
+  const rawReasoningTokens = usage.reasoningTokens
+    ?? usage.reasoning_tokens
+    ?? usage.completion_tokens_details?.reasoning_tokens
+    ?? usage.output_tokens_details?.reasoning_tokens;
+  const reasoningTokens = rawReasoningTokens === undefined || rawReasoningTokens === null
+    ? null
+    : tokenNumber(rawReasoningTokens);
   return {
     inputTokens,
     outputTokens,
+    completionTokens: outputTokens,
+    reasoningTokens,
     totalTokens: tokenNumber(usage.totalTokens ?? usage.total_tokens) || inputTokens + outputTokens,
   };
 }
 
 function safeString(value, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function reportEndingLooksIncomplete(reportMarkdown) {
+  const text = String(reportMarkdown || "").trim().replace(/[`*_#>\s]+$/g, "");
+  if (!text) return true;
+  return !/[。！？.!?；;：:…）)\]】》”’\"']$/.test(text);
 }
 
 function canonicalObservation(item, section, index) {
@@ -81,8 +97,24 @@ function canonicalizePacket(packetInput) {
   return packet;
 }
 
-function standardizeMultimodalResult({ rawText, provider, model, usage, latencyMs, requestId, finishReason, truncated }) {
-  const parsed = parseJsonObject(rawText, `${provider}_multimodal_json_parse_failed`);
+function standardizeMultimodalResult({ rawText, provider, model, usage, latencyMs, requestId, finishReason, truncated, performance = {} }) {
+  const parseStartedAt = Date.now();
+  let parsed;
+  try {
+    parsed = parseJsonObject(rawText, `${provider}_multimodal_json_parse_failed`);
+  } catch (error) {
+    error.performanceDiagnostics = {
+      ...performance,
+      responseParseMs: Number(performance.responseParseMs || 0) + (Date.now() - parseStartedAt),
+      responseBodyComplete: performance.responseBodyComplete === true,
+      rawResponseChars: String(rawText || "").length,
+      jsonTruncation: true,
+      jsonTruncationReason: "json_parse_failed",
+      reportTruncation: false,
+      reportTruncationReason: "not_available",
+    };
+    throw error;
+  }
   const packetInput = parsed.analysisPacket || parsed.analysis_packet;
   if (!packetInput || typeof packetInput !== "object") throw new Error("multimodal_analysis_packet_missing");
   if (!packetInput.verification_checks?.chimney_and_smoke) throw new Error("multimodal_analysis_packet_schema_invalid:chimney_and_smoke");
@@ -107,6 +139,8 @@ function standardizeMultimodalResult({ rawText, provider, model, usage, latencyM
   }
   const reportMarkdown = String(parsed.reportMarkdown || parsed.report_markdown || "").trim();
   if (!reportMarkdown) throw new Error("multimodal_report_missing");
+  const responseParseMs = Number(performance.responseParseMs || 0) + (Date.now() - parseStartedAt);
+  const consistencyStartedAt = Date.now();
   let consistency;
   try {
     consistency = assertReportFactConsistency(analysisPacket, reportMarkdown);
@@ -117,6 +151,17 @@ function standardizeMultimodalResult({ rawText, provider, model, usage, latencyM
     error.promptVersion = parsed.promptVersion || HTP_MULTIMODAL_FULL_V1;
     throw error;
   }
+  const consistencyCheckMs = Date.now() - consistencyStartedAt;
+  const analysisPacketJsonChars = JSON.stringify(analysisPacket).length;
+  const reportEndingIncomplete = reportEndingLooksIncomplete(reportMarkdown);
+  const reportTruncationReason = truncated
+    ? "provider_length"
+    : performance.responseBodyComplete === false
+      ? "incomplete_response"
+      : reportEndingIncomplete
+        ? "incomplete_ending"
+        : "none";
+  const reportTruncation = reportTruncationReason !== "none";
   return {
     success: true,
     mode: "single_multimodal",
@@ -133,8 +178,89 @@ function standardizeMultimodalResult({ rawText, provider, model, usage, latencyM
       finishReason: String(finishReason || ""),
       truncated: Boolean(truncated),
       factConsistency: consistency.factConsistency,
+      performance: {
+        ...performance,
+        providerLatencyMs: Number(performance.providerLatencyMs || latencyMs || 0),
+        responseParseMs,
+        consistencyCheckMs,
+        inputTokens: normalizeUsage(usage).inputTokens,
+        outputTokens: normalizeUsage(usage).outputTokens,
+        finishReason: String(finishReason || ""),
+        stopReason: String(finishReason || ""),
+        responseBodyComplete: performance.responseBodyComplete !== false,
+        rawResponseChars: String(rawText || "").length,
+        reportMarkdownChars: reportMarkdown.length,
+        analysisPacketJsonChars,
+        jsonTruncation: false,
+        jsonTruncationReason: "none",
+        reportTruncation,
+        reportTruncationReason,
+      },
     },
   };
 }
 
-module.exports = { canonicalizePacket, normalizeUsage, standardizeMultimodalResult };
+function standardizeVisualOnlyResult({ rawText, provider, model, usage, latencyMs, requestId, finishReason, truncated, performance = {} }) {
+  const parseStartedAt = Date.now();
+  let parsed;
+  try {
+    parsed = parseJsonObject(rawText, `${provider}_visual_analysis_json_parse_failed`);
+  } catch (error) {
+    error.performanceDiagnostics = {
+      ...performance,
+      responseParseMs: Number(performance.responseParseMs || 0) + (Date.now() - parseStartedAt),
+      rawResponseChars: String(rawText || "").length,
+      responseBodyComplete: performance.responseBodyComplete === true,
+      jsonTruncation: true,
+      jsonTruncationReason: "json_parse_failed",
+    };
+    throw error;
+  }
+  const packetInput = parsed.analysisPacket || parsed.analysis_packet || parsed;
+  let analysisPacket;
+  try {
+    analysisPacket = sanitizeV2AnalysisPackage({
+      ...canonicalizePacket(packetInput),
+      prompt_version: "HTP_VISUAL_HYPOTHESIS_V2",
+    });
+  } catch (error) {
+    error.provider = provider;
+    error.model = model;
+    throw error;
+  }
+  const factSnapshot = buildFactSnapshot(analysisPacket);
+  const normalizedUsage = normalizeUsage(usage);
+  return {
+    success: true,
+    mode: "visual_only",
+    provider,
+    model,
+    promptVersion: parsed.promptVersion || parsed.prompt_version || "HTP_VISUAL_ANALYSIS_ONLY_V1",
+    analysisPacket,
+    factSnapshot,
+    humanConfirmationNeeded: importantFactsNeedingConfirmation(factSnapshot),
+    usage: normalizedUsage,
+    latencyMs: Number(latencyMs) || 0,
+    diagnostics: {
+      requestId: String(requestId || ""),
+      finishReason: String(finishReason || ""),
+      truncated: Boolean(truncated),
+      performance: {
+        ...performance,
+        providerLatencyMs: Number(performance.providerLatencyMs || latencyMs || 0),
+        responseParseMs: Number(performance.responseParseMs || 0) + (Date.now() - parseStartedAt),
+        inputTokens: normalizedUsage.inputTokens,
+        outputTokens: normalizedUsage.outputTokens,
+        finishReason: String(finishReason || ""),
+        stopReason: String(finishReason || ""),
+        responseBodyComplete: performance.responseBodyComplete !== false,
+        rawResponseChars: String(rawText || "").length,
+        analysisPacketJsonChars: JSON.stringify(analysisPacket).length,
+        jsonTruncation: false,
+        jsonTruncationReason: "none",
+      },
+    },
+  };
+}
+
+module.exports = { canonicalizePacket, normalizeUsage, reportEndingLooksIncomplete, standardizeMultimodalResult, standardizeVisualOnlyResult };

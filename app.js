@@ -115,6 +115,10 @@ const reloadModelSettingsButton = document.querySelector("#reloadModelSettingsBu
 const saveModelSettingsButton = document.querySelector("#saveModelSettingsButton");
 const modelSettingsMessage = document.querySelector("#modelSettingsMessage");
 const modelSettingsMeta = document.querySelector("#modelSettingsMeta");
+const knowledgeBaseStatusPanel = document.querySelector("#knowledgeBaseStatusPanel");
+const knowledgeBaseStatusGrid = document.querySelector("#knowledgeBaseStatusGrid");
+const refreshKnowledgeBaseStatusButton = document.querySelector("#refreshKnowledgeBaseStatusButton");
+const knowledgeBaseStatusMessage = document.querySelector("#knowledgeBaseStatusMessage");
 const modelProviderTestState = new Map();
 const modelProviderStatusList = document.querySelector("#modelProviderStatusList");
 const testVisionModelButton = document.querySelector("#testVisionModelButton");
@@ -150,8 +154,10 @@ const organizationProfileKey = "soul_painting_organization_profile";
 const maxImageSize = 5 * 1024 * 1024;
 let selectedFile = null;
 let selectedDataUrl = "";
+let currentAnalysisSessionId = "";
 let lastReportText = "";
 let lastReportMeta = null;
+let reportStatus = "empty";
 let isSubmitting = false;
 let showInitialAdminForm = false;
 let cnAuthMode = false;
@@ -584,6 +590,7 @@ function modelSettingsFromForm() {
     multimodalProvider: formData.get("multimodalProvider"),
     multimodalModel: formData.get("multimodalModel"),
     allowTeacherModelSelection: formData.get("allowTeacherModelSelection") === "on",
+    knowledgeBaseEnabled: formData.get("knowledgeBaseEnabled") === "on",
     pipelineMode: formData.get("analysisMode") === "single_multimodal" ? "single" : "split",
     singleProvider: formData.get("singleProvider"),
     singleModel: formData.get("singleModel"),
@@ -599,6 +606,7 @@ function applyModelSettingsToForm(settings = {}) {
   modelSettingsForm.multimodalProvider.value = settings.multimodalProvider || settings.singleProvider || "qwen";
   modelSettingsForm.multimodalModel.value = settings.multimodalModel || settings.singleModel || "qwen3.8-max";
   modelSettingsForm.allowTeacherModelSelection.checked = Boolean(settings.allowTeacherModelSelection);
+  modelSettingsForm.knowledgeBaseEnabled.checked = settings.knowledgeBaseEnabled !== false;
   modelSettingsForm.singleProvider.value = settings.singleProvider || "openai";
   modelSettingsForm.singleModel.value = settings.singleModel || "gpt-4o-mini";
   modelSettingsForm.visionProvider.value = settings.visionProvider || "openai";
@@ -612,7 +620,7 @@ function updateModelSettingsModeVisibility() {
   const single = modelSettingsForm?.analysisMode?.value === "single_multimodal";
   document.querySelector("#singleMultimodalFields")?.classList.toggle("is-hidden", !single);
   document.querySelector("#legacyDualModelFields")?.classList.toggle("is-hidden", single);
-  if (testTextModelButton) testTextModelButton.classList.toggle("is-hidden", single);
+  if (testTextModelButton) testTextModelButton.classList.remove("is-hidden");
 }
 
 async function loadModelSettings() {
@@ -657,6 +665,45 @@ async function loadModelProviderStatus() {
     value.textContent = `${status.configured ? "已配置" : "未配置"}；图像能力：${status.supportsVision ? "支持" : "不支持"}；Base URL：${status.host || "未配置"}（${status.source || "-"}）${recentText}`;
     row.append(label, value);
     modelProviderStatusList.appendChild(row);
+  }
+}
+
+function renderKnowledgeBaseStatus(status = {}, enabled = true) {
+  if (!knowledgeBaseStatusGrid) return;
+  knowledgeBaseStatusGrid.innerHTML = "";
+  const roleSummary = Object.entries(status.byRole || {}).map(([key, value]) => `${key}: ${value}`).join("；") || "无";
+  const evidenceSummary = Object.entries(status.byEvidenceLevel || {}).map(([key, value]) => `${key}: ${value}`).join("；") || "无";
+  const rows = [
+    ["知识库开关", enabled ? "已启用" : "已关闭"],
+    ["加载状态", status.status || "unknown"],
+    ["知识库版本", status.knowledgeBaseVersion || "-"],
+    ["总卡片数", status.totalCardCount ?? 0],
+    ["approved 卡数", status.approvedCardCount ?? 0],
+    ["运行可用卡数", status.usableCardCount ?? 0],
+    ["按角色统计", roleSummary],
+    ["按证据等级统计", evidenceSummary],
+    ["最近加载时间", status.loadedAt ? formatRecordTime(status.loadedAt) : "未加载"],
+  ];
+  if (status.error) rows.push(["安全错误摘要", status.error]);
+  for (const [labelText, valueText] of rows) {
+    const item = document.createElement("div");
+    const label = document.createElement("span");
+    const value = document.createElement("strong");
+    label.textContent = labelText;
+    value.textContent = String(valueText);
+    item.append(label, value);
+    knowledgeBaseStatusGrid.appendChild(item);
+  }
+}
+
+async function loadKnowledgeBaseStatus() {
+  if (!isAdmin() || !knowledgeBaseStatusGrid) return;
+  const data = await cnApi("/api/cn-admin-knowledge-status");
+  renderKnowledgeBaseStatus(data.status, data.knowledgeEnabled);
+  if (knowledgeBaseStatusMessage) {
+    knowledgeBaseStatusMessage.textContent = data.status?.status === "load_failed"
+      ? "知识库未能加载，系统已安全降级为模型通识模式。"
+      : "知识库状态已刷新。";
   }
 }
 
@@ -745,6 +792,8 @@ function renderSystemStatusRows(status = {}) {
   systemStatusGrid.innerHTML = "";
   const rows = [
     ["程序版本", status.version || "-"],
+    ["运行版本", status.runtimeVersion || "-"],
+    ["服务启动时间", status.serverStartedAt ? formatRecordTime(status.serverStartedAt) : "-"],
     ["运行模式", status.appMode || "-"],
     ["监听端口", status.port || "-"],
     ["数据库状态", status.database || "-"],
@@ -1070,6 +1119,9 @@ function showDashboardView() {
   renderPermissionUI();
   renderUsageStats();
   renderModelSettingsPanel();
+  loadKnowledgeBaseStatus().catch((error) => {
+    if (knowledgeBaseStatusMessage) knowledgeBaseStatusMessage.textContent = error.message || "知识库状态读取失败。";
+  });
 }
 
 analysisViewButton.addEventListener("click", showAnalysisView);
@@ -1239,6 +1291,7 @@ saveModelSettingsButton.addEventListener("click", async (event) => {
     }
     setModelSettingsMessage("模型设置已保存到 SQLite。此处不保存任何 API Key。");
     await loadModelProviderStatus();
+    await loadKnowledgeBaseStatus();
   } catch (error) {
     setModelSettingsMessage(error.message || "保存模型设置失败。", true);
   }
@@ -1246,6 +1299,9 @@ saveModelSettingsButton.addEventListener("click", async (event) => {
 testVisionModelButton?.addEventListener("click", () => runModelTest("/api/cn-admin-test-vision-model"));
 testTextModelButton?.addEventListener("click", () => runModelTest("/api/cn-admin-test-text-model"));
 testModelPipelineButton?.addEventListener("click", () => runModelTest("/api/cn-admin-test-model-pipeline"));
+refreshKnowledgeBaseStatusButton?.addEventListener("click", () => loadKnowledgeBaseStatus().catch((error) => {
+  if (knowledgeBaseStatusMessage) knowledgeBaseStatusMessage.textContent = error.message || "知识库状态读取失败。";
+}));
 modelSettingsForm?.analysisMode?.addEventListener("change", updateModelSettingsModeVisibility);
 modelSettingsForm?.multimodalProvider?.addEventListener("change", () => {
   const defaults = {
@@ -1297,6 +1353,7 @@ async function handleFile(file) {
   }
 
   selectedFile = file;
+  currentAnalysisSessionId = "";
   selectedDataUrl = await readFileAsDataUrl(file);
   previewImage.src = selectedDataUrl;
   reportImage.src = selectedDataUrl;
@@ -1314,6 +1371,7 @@ changeImageButton.addEventListener("click", () => {
   artworkInput.value = "";
   selectedFile = null;
   selectedDataUrl = "";
+  currentAnalysisSessionId = "";
   previewImage.removeAttribute("src");
   reportImage.removeAttribute("src");
   previewWrap.classList.add("is-hidden");
@@ -1344,6 +1402,9 @@ profileForm.addEventListener("input", validateForm);
 profileForm.addEventListener("change", () => {
   validateForm();
   updateGenerateLabels();
+  if (currentAnalysisSessionId && document.activeElement === contentTypeSelect) {
+    setStatus("已复用本次绘画分析，无需重新识别图片。点击生成即可获取新的内容类型。");
+  }
 });
 
 function getTeacherProfile() {
@@ -1674,6 +1735,7 @@ function renderReport(payload) {
     contentType: contentTypeSelect.value,
     createdAt: new Date().toISOString(),
   };
+  setReportStatus("ready");
   renderReportMeta();
   reportContent.innerHTML = markdownToHtml(markdown || `# ${title}\n\n报告暂未生成内容，请稍后再试。`);
   renderAdminAnalysisDiagnostics(payload);
@@ -1720,6 +1782,10 @@ function renderAdminAnalysisDiagnostics(payload = {}) {
     criticalVisualFacts: diagnostics.criticalVisualFacts || {},
     needsHumanConfirmation: diagnostics.needsHumanConfirmation || [],
     factConsistency: diagnostics.factConsistency || {},
+    knowledge: diagnostics.knowledge || {},
+    performance: diagnostics.performance || {},
+    pipeline: diagnostics.pipeline || {},
+    runtime: diagnostics.runtime || {},
   }, null, 2);
   adminAnalysisPacket.textContent = JSON.stringify(payload.analysisPacket, null, 2);
 }
@@ -1748,7 +1814,7 @@ function markdownToPlainText(markdown) {
 }
 
 function buildReportExportData() {
-  if (!lastReportText || !lastReportMeta) return null;
+  if (reportStatus !== "ready" || !lastReportText || !lastReportMeta) return null;
   const organization = getOrganizationProfile();
   const meta = getCurrentReportMeta();
   // 导出只读取当前页面中的报告，不写入 localStorage，避免保存敏感报告正文。
@@ -1897,6 +1963,18 @@ function setSubmitting(submitting) {
   analyzeButton.textContent = submitting ? "正在生成中……" : getCurrentConfig().button;
 }
 
+function setReportStatus(status) {
+  reportStatus = status;
+  const disabled = status !== "ready";
+  for (const button of [copyReportButton, printReportButton, exportWordButton, exportTxtButton]) {
+    if (button) button.disabled = disabled;
+  }
+  if (disabled) {
+    lastReportText = "";
+    lastReportMeta = null;
+  }
+}
+
 analyzeButton.addEventListener("click", async () => {
   if (isSubmitting) return;
   if (!requireLogin("请先登录后生成报告。")) return;
@@ -1921,32 +1999,70 @@ analyzeButton.addEventListener("click", async () => {
 
   const config = getCurrentConfig();
   const teacherProfile = getTeacherProfile();
+  const reusingVisual = Boolean(currentAnalysisSessionId);
+  setReportStatus("pending");
   setSubmitting(true);
   loadingCard.classList.remove("is-hidden");
   reportCard.classList.add("is-hidden");
-  setStatus(config.waiting);
+  setStatus(reusingVisual ? "阶段 3/3：正在复用绘画分析并生成新报告……" : "阶段 1/3：正在分析画面……完成后将自动匹配专业知识并生成报告。");
   loadingCard.scrollIntoView({ behavior: "smooth", block: "center" });
 
+  let responseData = {};
+  let progressTimer = null;
   try {
     const authToken = cloudAuthReady ? await getCloudAccessToken() : "";
+    const analysisRequestId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const headers = { "Content-Type": "application/json" };
     if (!cnAuthMode) headers["X-Access-Code"] = accessCode;
     if (authToken) headers.Authorization = `Bearer ${authToken}`;
+    if (cnAuthMode && authToken) {
+      const stageMessages = {
+        visual: "阶段 1/3：正在分析画面……",
+        visual_retry: "阶段 1/3：视觉服务暂时不稳定，正在自动重试……",
+        knowledge: "阶段 2/3：正在匹配专业知识……",
+        report: `阶段 3/3：${config.waiting}`,
+        report_retry: "阶段 3/3：报告输出接近长度上限，正在生成紧凑完整版本……",
+      };
+      const refreshProgress = async () => {
+        try {
+          const progressResponse = await fetch(`/api/cn-analysis-progress?requestId=${encodeURIComponent(analysisRequestId)}`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          });
+          if (!progressResponse.ok) return;
+          const progress = await progressResponse.json();
+          if (stageMessages[progress.stage]) setStatus(stageMessages[progress.stage]);
+        } catch {
+          // Progress display is optional and must never interrupt report generation.
+        }
+      };
+      progressTimer = setInterval(refreshProgress, 1000);
+    }
     const response = await fetch("/api/analyze", {
       method: "POST",
       headers,
       body: JSON.stringify({
         ...(cnAuthMode ? {} : { accessCode }),
-        image: selectedDataUrl,
-        imageType: selectedFile.type,
+        analysisRequestId,
+        ...(reusingVisual ? { analysisSessionId: currentAnalysisSessionId } : { image: selectedDataUrl, imageType: selectedFile.type }),
         profile: teacherProfile,
       }),
     });
     const data = await response.json().catch(() => ({}));
+    responseData = data;
+    if (data.analysisSessionId) currentAnalysisSessionId = data.analysisSessionId;
     if (!response.ok) {
       if (isAdmin() && data.error === "model_call_failed:report_fact_conflict" && data.adminDiagnostics && data.analysisPacket) {
+        setReportStatus("conflict");
         reportTitle.textContent = "报告事实一致性检查未通过";
         reportContent.textContent = "报告文字与结构化视觉事实存在冲突，系统已阻止显示该报告。请展开下方管理员诊断查看冲突事实。";
+        renderAdminAnalysisDiagnostics(data);
+        loadingCard.classList.add("is-hidden");
+        reportCard.classList.remove("is-hidden");
+        reportCard.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else if (isAdmin() && ["report_generation_failed", "report_generation_truncated", "model_call_failed:report_knowledge_policy_conflict"].includes(data.error) && data.adminDiagnostics && data.analysisPacket) {
+        setReportStatus("conflict");
+        reportTitle.textContent = "报告阶段未完成";
+        reportContent.textContent = "绘画分析结果已安全保留，但本次报告未进入可展示或导出状态。请展开管理员诊断查看阶段信息。";
         renderAdminAnalysisDiagnostics(data);
         loadingCard.classList.add("is-hidden");
         reportCard.classList.remove("is-hidden");
@@ -1960,17 +2076,27 @@ analyzeButton.addEventListener("click", async () => {
     loadingCard.classList.add("is-hidden");
     reportCard.classList.remove("is-hidden");
     reportCard.scrollIntoView({ behavior: "smooth", block: "start" });
-    setStatus(config.done);
+    setStatus(reusingVisual ? `${config.done} 已复用本次绘画分析，无需重新识别图片。` : config.done);
   } catch (error) {
     loadingCard.classList.add("is-hidden");
-    setStatus(error.message || "网络异常或服务器超时，请稍后再试。", true);
+    if (responseData.analysisSessionId) currentAnalysisSessionId = responseData.analysisSessionId;
+    if (responseData.error === "analysis_session_invalid") currentAnalysisSessionId = "";
+    const retryMessage = responseData.error === "analysis_session_invalid"
+      ? "本次绘画分析会话已过期。图片仍在当前页面，请再次点击生成，系统会重新分析画面。"
+      : ["report_generation_failed", "report_generation_truncated", "model_call_failed:report_fact_conflict", "model_call_failed:report_knowledge_policy_conflict"].includes(responseData.error)
+      ? responseData.error === "report_generation_truncated"
+        ? "报告两次输出都未能完整结束，绘画分析结果已保留。请稍后重新生成报告，无需重新识别图片。"
+        : "报告生成未完成，绘画分析结果已保留。请点击生成按钮重新生成报告，无需重新识别图片。"
+      : error.message || "网络异常或服务器超时，请稍后再试。";
+    setStatus(retryMessage, true);
   } finally {
+    if (progressTimer) clearInterval(progressTimer);
     setSubmitting(false);
   }
 });
 
 copyReportButton.addEventListener("click", async () => {
-  if (!lastReportText) return;
+  if (reportStatus !== "ready" || !lastReportText) return;
   const plainText = markdownToPlainText(lastReportText);
   try {
     await navigator.clipboard.writeText(plainText);
@@ -1990,7 +2116,9 @@ copyReportButton.addEventListener("click", async () => {
   }, 1600);
 });
 
-printReportButton.addEventListener("click", () => window.print());
+printReportButton.addEventListener("click", () => {
+  if (reportStatus === "ready") window.print();
+});
 exportTxtButton.addEventListener("click", downloadTextFile);
 exportWordButton.addEventListener("click", downloadWordFile);
 
@@ -2033,8 +2161,10 @@ function resetWorkspace() {
   profileForm.reset();
   selectedFile = null;
   selectedDataUrl = "";
+  currentAnalysisSessionId = "";
   lastReportText = "";
   lastReportMeta = null;
+  setReportStatus("empty");
   previewImage.removeAttribute("src");
   reportImage.removeAttribute("src");
   previewWrap.classList.add("is-hidden");
@@ -2883,6 +3013,7 @@ function renderCnPermissionUI() {
   userManagementPanel.classList.toggle("is-hidden", !admin);
   organizationSettingsPanel?.classList.toggle("is-hidden", !user);
   modelSettingsPanel.classList.toggle("is-hidden", !admin);
+  knowledgeBaseStatusPanel?.classList.toggle("is-hidden", !admin);
   systemStatusPanel?.classList.toggle("is-hidden", !admin);
   backupPanel?.classList.toggle("is-hidden", !admin);
   if (!admin) sessionStorage.removeItem(adminSettingsAccessKey);

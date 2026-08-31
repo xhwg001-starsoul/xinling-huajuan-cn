@@ -7,8 +7,7 @@ const { providerStatus } = require("./systemModelSettingsService");
 const { getOrganizationModelSettings } = require("./systemModelSettingsService");
 const { requireAdmin } = require("./authService");
 const { appMode, dataRoot, databasePath, logsDir, backupsDir, publicDataRootLabel } = require("./dataPaths");
-
-const startedAt = new Date();
+const { buildId, runtimeVersion, serverStartedAt } = require("./runtimeIdentity");
 
 function databaseOk() {
   try {
@@ -66,8 +65,12 @@ function diskFreeBytes() {
 
 function publicHealth() {
   return {
+    application: "xinling-huajuan-cn",
     status: databaseOk() ? "ok" : "degraded",
     version: packageJson.version,
+    runtimeVersion,
+    buildId,
+    serverStartedAt,
     uptimeSeconds: Math.floor(process.uptime()),
     database: databaseOk() ? "ok" : "error",
   };
@@ -79,7 +82,10 @@ function adminSystemStatus(token) {
   const modelSettings = getOrganizationModelSettings(admin.organizationId);
   return {
     version: packageJson.version,
-    startedAt: startedAt.toISOString(),
+    runtimeVersion,
+    buildId,
+    serverStartedAt,
+    startedAt: serverStartedAt,
     uptimeSeconds: Math.floor(process.uptime()),
     appMode,
     host: process.env.HOST || (appMode === "school" ? "0.0.0.0" : "127.0.0.1"),
@@ -92,8 +98,8 @@ function adminSystemStatus(token) {
     providers,
     modelPipeline: {
       pipelineMode: modelSettings.pipelineMode,
-      visionProvider: modelSettings.pipelineMode === "split" ? modelSettings.visionProvider : modelSettings.singleProvider,
-      textProvider: modelSettings.pipelineMode === "split" ? modelSettings.textProvider : modelSettings.singleProvider,
+      visionProvider: modelSettings.analysisMode === "single_multimodal" ? modelSettings.multimodalProvider : modelSettings.visionProvider,
+      textProvider: modelSettings.textProvider,
     },
     diskFreeBytes: diskFreeBytes(),
     lanAddresses: lanAddresses(),

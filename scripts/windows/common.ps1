@@ -174,11 +174,21 @@ function Test-XinlingHealth {
   param([int]$Port = $DefaultPort)
   try {
     $result = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/health" -TimeoutSec 5
-    if ($result.status -eq "ok") { return "ok" }
+    if ($result.status -eq "ok" -and ($result.application -eq "xinling-huajuan-cn" -or ($result.version -and $result.database -eq "ok"))) { return "ok" }
     return "not_ok"
   } catch {
     return "not_ok_or_not_running"
   }
+}
+
+function Get-XinlingHealthInfo {
+  param([int]$Port = $DefaultPort)
+  try {
+    $result = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/health" -TimeoutSec 5
+    if ($result.status -eq "ok" -and ($result.application -eq "xinling-huajuan-cn" -or ($result.version -and $result.database -eq "ok"))) { return $result }
+  } catch {
+  }
+  return $null
 }
 
 function Get-XinlingCommandLineValidation {
@@ -205,9 +215,12 @@ function Get-XinlingRuntimeStatus {
   $processExists = Test-XinlingProcessExists $pidValue
   $portListenerPid = Get-XinlingPortListenerPid $Port
   $healthResult = Test-XinlingHealth $Port
+  $healthInfo = Get-XinlingHealthInfo $Port
+  $listenerValidation = Get-XinlingCommandLineValidation $portListenerPid
+  $strongHealthIdentity = [bool]($healthInfo -and $healthInfo.application -eq "xinling-huajuan-cn")
   $pidSource = if ($pidValue) { "pid-file" } else { "none" }
 
-  if ($RecoverPidFile -and (!$pidValue -or !$processExists -or $portListenerPid -ne $pidValue) -and $portListenerPid -and $healthResult -eq "ok") {
+  if ($RecoverPidFile -and (!$pidValue -or !$processExists -or $portListenerPid -ne $pidValue) -and $portListenerPid -and $healthResult -eq "ok" -and ($strongHealthIdentity -or $listenerValidation -eq "matched")) {
     try {
       Set-Content -LiteralPath $PidPath -Value $portListenerPid -Encoding ASCII
       $pidValue = $portListenerPid
@@ -220,8 +233,8 @@ function Get-XinlingRuntimeStatus {
   }
 
   $portMatchesPid = [bool]($pidValue -and $portListenerPid -and ([int]$portListenerPid -eq [int]$pidValue))
-  $running = [bool]($processExists -and $portMatchesPid -and $healthResult -eq "ok")
   $commandLineValidation = Get-XinlingCommandLineValidation $pidValue
+  $running = [bool]($processExists -and $portMatchesPid -and $healthResult -eq "ok" -and ($strongHealthIdentity -or $commandLineValidation -in @("matched", "unavailable")))
 
   return [pscustomobject]@{
     Running = $running
@@ -247,7 +260,7 @@ function Get-LanIPv4 {
 function Test-Health($Port = $DefaultPort) {
   try {
     $result = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/health" -TimeoutSec 5
-    return $result.status -eq "ok"
+    return $result.status -eq "ok" -and ($result.application -eq "xinling-huajuan-cn" -or ($result.version -and $result.database -eq "ok"))
   } catch {
     return $false
   }

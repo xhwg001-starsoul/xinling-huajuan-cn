@@ -11,6 +11,7 @@ const {
   postJson,
 } = require("./providers/multimodal/common");
 const { parseJsonObject } = require("./htpVisualAnalysis");
+const { buildChatCompletionsReportBody } = require("./reportProviderConfig");
 
 const MODEL_CONNECTION_TEST_TIMEOUT_MS = 30000;
 const VISION_TEST_PROMPT = '识别这张非学生测试图片中的基本物体，只输出 JSON：{"objects":["名称"]}';
@@ -45,14 +46,14 @@ function assertStageReady(stage) {
   return definition;
 }
 
-async function callTextProvider(stage) {
+async function callTextProvider(stage, { fetchImpl = fetch } = {}) {
   const definition = assertStageReady(stage);
   if (!["openai", "deepseek", "qwen"].includes(stage.provider)) throw testError("provider_not_implemented", stage);
   const apiKey = process.env[definition.apiKeyEnv];
   const body = stage.provider === "openai"
     ? { model: stage.model, max_output_tokens: 8, input: [{ role: "user", content: [{ type: "input_text", text: "Reply only with: connection_ok" }] }] }
-    : { model: stage.model, messages: [{ role: "user", content: "Reply only with: connection_ok" }], max_tokens: 8, temperature: 0, stream: false };
-  await postJson({ provider: stage.provider, stage, apiKey, body, timeoutMs: MODEL_CONNECTION_TEST_TIMEOUT_MS });
+    : buildChatCompletionsReportBody({ stage, prompt: "Reply only with: connection_ok", maxTokens: 8, temperature: 0 });
+  await postJson({ provider: stage.provider, stage, apiKey, body, fetchImpl, timeoutMs: MODEL_CONNECTION_TEST_TIMEOUT_MS });
 }
 
 async function callVisionProvider(stage) {
@@ -113,13 +114,9 @@ async function testVisionRuntime(runtime) {
 }
 
 async function testTextRuntime(runtime) {
-  const stage = runtime.analysisMode === "single_multimodal" ? runtime.multimodal : runtime.text;
+  const stage = runtime.analysisMode === "single_multimodal" ? runtime.report : runtime.text;
   const startedAt = Date.now();
   try {
-    if (runtime.analysisMode === "single_multimodal") {
-      const capabilities = await callVisionProvider(stage);
-      return safeResult({ success: true, stage, startedAt, capabilities });
-    }
     await callTextProvider(stage);
     return safeResult({ success: true, stage, startedAt });
   } catch (error) {
@@ -140,17 +137,19 @@ async function testModelPipeline(token) {
   const runtime = requireModelRuntime(token);
   if (runtime.analysisMode === "single_multimodal") {
     const vision = await testVisionRuntime(runtime);
+    const text = await testTextRuntime(runtime);
+    const success = Boolean(vision.success && text.success);
     return {
-      success: vision.success,
+      success,
       analysisMode: runtime.analysisMode,
       configurationSource: runtime.settingsSource,
       updatedAt: runtime.updatedAt,
       visionStatus: vision.success ? "success" : "failed",
-      textStatus: "same_multimodal_call",
-      overallStatus: vision.success ? "success" : "failed",
+      textStatus: text.success ? "success" : "failed",
+      overallStatus: success ? "success" : "failed",
       durationMs: Date.now() - startedAt,
       vision,
-      text: null,
+      text,
     };
   }
   const vision = await testVisionRuntime(runtime);
@@ -170,4 +169,4 @@ async function testModelPipeline(token) {
   };
 }
 
-module.exports = { testVisionModel, testTextModel, testModelPipeline };
+module.exports = { callTextProvider, testVisionModel, testTextModel, testModelPipeline };

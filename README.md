@@ -173,8 +173,13 @@ DOMESTIC_DATABASE_URL
 ## 统一多模态分析架构
 
 - 管理员可在 SQLite 模型设置中选择 `single_multimodal` 或 `legacy_dual_model`。旧版 Qwen 视觉到 DeepSeek 文本链完整保留，不作为隐藏回退。
-- 单多模态模式支持 OpenAI、Qwen 和 DeepSeek Vision，由所选模型在一次调用中直接读取原图并生成结构化分析包与最终报告。
-- 默认建议模型为 Qwen `qwen3.8-max`、DeepSeek Vision `deepseek-v4-flash-vision-exp`；OpenAI 沿用管理员当前配置的模型，并通过真实图像连接测试确认其多模态能力。
+- `single_multimodal` 现采用分阶段流水线：所选多模态模型只读取一次原图并生成结构化 `analysisPacket`，本地知识库完成约束和补充后，再由纯文本报告模型生成教师本次选择的一种内容。
+- `caseAnalysisCore` 只保存在 Node 进程的短期内存 store 中，不写入浏览器、数据库或磁盘；浏览器仅持有随机 `analysisSessionId`。默认 TTL 为 30 分钟、最多 200 条，切换输出类型或单独重试报告时不会再次把图片发送给视觉模型。
+- 视觉阶段使用 `HTP_VISUAL_ANALYSIS_ONLY_V1`，报告阶段使用 `HTP_REPORT_FROM_CASE_CORE_V1`。知识库位于两次模型调用之间，限制字段会在最终报告生成前生效。
+- 报告模型复用管理员配置的文本 provider/model，支持 DeepSeek、Qwen 与 OpenAI 的纯文本接口，不在业务代码中固定某一家供应商。
+- 视觉和报告阶段分别使用 `VISUAL_PROVIDER_TIMEOUT_MS` 与 `REPORT_PROVIDER_TIMEOUT_MS`；不同报告类型也有各自输出上限，避免和视觉 JSON 共用同一输出预算。
+- 管理员诊断可查看分阶段耗时、token、结束原因、是否复用视觉结果、`runtimeVersion` 和 `serverStartedAt`；普通教师响应不包含性能诊断。
+- 当前建议组合为 Qwen `qwen3.8-max` 负责视觉分析、DeepSeek `deepseek-chat` 负责纯文本报告；DeepSeek Vision 与 OpenAI 多模态路径继续作为管理员可选配置保留。
 - API Key 与 Base URL 仍只来自 `.env.local`、`app.env` 或服务器环境变量，不保存到 SQLite。模型设置与使用记录只保存安全的 provider、model 和分析模式元数据。
 - `allow_teacher_model_selection` 已作为后台兼容字段预留且默认关闭，本轮没有向普通教师页面暴露模型技术选项。
 
@@ -189,3 +194,12 @@ DOMESTIC_DATABASE_URL
 - 新增 Windows 脚本：首次安装、配置、启动、停止、重启、状态、迁移开发库、备份、防火墙 Private 规则、开机自启动、发布包和升级校验。
 - 新增 `docs/` 学校部署、管理员操作、备份恢复、系统升级和部署检查清单。
 - 发布包脚本排除 `.env.local`、`app.env`、数据库、备份、日志、runtime、updates、`.git` 和 `node_modules`。
+
+## v0.9.2：HTP 专业知识库 V0.1
+
+- 运行知识库使用 `knowledge-base/knowledge_cards.jsonl`、`sources.json` 和 `manifest.json`，不直接读取 `references/` 中的 PDF 或审查资料。
+- 运行时严格只加载 `review_status === "approved"` 的卡片；approved 仍须服从角色、证据等级、风险等级、自动化策略、用户可见性、Inquiry 确认和 `do_not_infer`。
+- 模型看原图前只注入少量全局守则，特征卡在模型返回 `analysisPacket` 后由程序确定性检索，避免解释知识污染视觉识别。
+- 知识库不增加第二次模型调用，不使用向量数据库、Embedding 或外部 RAG；加载失败时安全降级到模型通识模式。
+- 管理员可切换知识库并查看安全加载摘要，普通教师看不到技术状态。
+- V0.2 审核表与正式候选 JSONL 均为 246 个唯一 ID，已安全同步为 246 张 approved 运行卡；非审核字段哈希在同步前后保持一致。

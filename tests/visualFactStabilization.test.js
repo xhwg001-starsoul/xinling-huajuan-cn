@@ -46,6 +46,30 @@ run("3 smoke uncertain 允许保留性描述", () => {
   assert.equal(evaluateReportFactConsistency(snapshot, "烟囱上方形态可能是烟，也可能是云，需要创作者确认。 ").status, "pass");
 });
 
+run("3a smoke uncertain 允许烟云比喻与条件表达", () => {
+  const allowed = [
+    "烟囱旁飘着两团像云又像烟的东西。",
+    "这里是疑似烟团，也可能是云。",
+    "如果是炊烟，它可能让人想到家的温度。",
+    "需要确认这是烟还是云。",
+  ];
+  for (const report of allowed) assert.equal(evaluateReportFactConsistency(snapshot, report).status, "pass", report);
+});
+
+run("3b smoke uncertain 拦截明确肯定冒烟", () => {
+  const conflicts = ["烟囱正在冒烟。", "烟从烟囱里升起来。", "画面明确有两股炊烟。"];
+  for (const report of conflicts) assert.equal(evaluateReportFactConsistency(snapshot, report).status, "conflict", report);
+});
+
+run("3c smoke yes/no 继续拦截反向确定陈述", () => {
+  const smokeNo = structuredClone(snapshot);
+  smokeNo.smoke.present = "no";
+  assert.equal(evaluateReportFactConsistency(smokeNo, "烟囱正在冒烟。").status, "conflict");
+  const smokeYes = structuredClone(snapshot);
+  smokeYes.smoke.present = "yes";
+  assert.equal(evaluateReportFactConsistency(smokeYes, "烟囱没有烟。").status, "conflict");
+});
+
 run("4 medium 绝对树干宽度不得改写为很细", () => {
   assert.equal(evaluateReportFactConsistency(snapshot, "树干很细。 ").status, "conflict");
 });

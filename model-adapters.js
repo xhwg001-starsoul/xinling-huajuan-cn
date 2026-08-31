@@ -439,7 +439,20 @@ function buildProfessionalReportPrompt(profile, observationRecord) {
   const plan = selectedPlan(profile);
   const contentType = normalizeContentType(profile);
   const isObservationReport = contentType === CONTENT_TYPES.professional;
-  const deepLengthRules = isObservationReport
+  const splitLengthMode = String(profile.splitReportLengthMode || "");
+  const deepLengthRules = isObservationReport && splitLengthMode === "fallback"
+    ? `
+完整性优先要求：
+- 保留计划中的全部章节，每节写出结论完整的段落，不得在句中结束。
+- 正文建议 3500-5000 个中文字符，避免重复画面描述、重复边界声明和同义扩写。
+- 访谈问题与建议保留最有价值的项目，避免为了凑篇幅扩展。`
+    : isObservationReport && splitLengthMode === "balanced"
+      ? `
+专业报告篇幅要求：
+- 正文建议 4200-6000 个中文字符，软上限 6500。
+- 画面客观描述、房屋、树木、人物、整体构图、探索方向、保护性资源、访谈问题与教师建议均须完整出现。
+- 各部分优先呈现高相关、高置信度内容；避免重复免责声明、重复画面描述和同义扩写。`
+      : isObservationReport
     ? `
 重点篇幅要求：
 - 【画面客观描述】不少于 300 字，只描述，不解释。
@@ -451,7 +464,7 @@ function buildProfessionalReportPrompt(profile, observationRecord) {
 - 【保护性资源与积极因素】不少于 250 字。
 - 【建议访谈问题】生成 12-16 个问题，并按画面本身、情绪体验、家庭与支持系统、学校人际学习、风险与求助分组。
 - 【教师辅导建议】不少于 400 字，分为一对一谈话、班主任日常观察、家校沟通、必要时转介建议。`
-    : `
+      : `
 请根据当前生成目标适当调整篇幅，但仍要保持具体、有画面依据、有访谈启发，不要只给模板化条目。`;
 
   return `你是一位有经验的学校心理教师，正在为同事撰写一份内部使用的房树人绘画观察辅助材料。请以“专业、谨慎、细腻、有心理理解深度、有访谈启发性”的方式写作。

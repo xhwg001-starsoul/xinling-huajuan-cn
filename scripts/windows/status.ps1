@@ -3,11 +3,14 @@ Ensure-XinlingDirs
 
 $pkg = Get-Content (Join-Path $ProjectRoot "package.json") | ConvertFrom-Json
 $state = Get-XinlingRuntimeStatus -Port $DefaultPort -RecoverPidFile
+$healthInfo = Get-XinlingHealthInfo $DefaultPort
 
 Write-SafeStatus "Running: $($state.Running)"
 Write-SafeStatus "PID: $(if ($state.Running -or $state.PidValue) { $state.PidValue } else { '-' })"
 Write-SafeStatus "PID source: $($state.PidSource)"
 Write-SafeStatus "Version: $($pkg.version)"
+Write-SafeStatus "Runtime version: $(if ($healthInfo) { $healthInfo.runtimeVersion } else { '-' })"
+Write-SafeStatus "Server started at: $(if ($healthInfo) { $healthInfo.serverStartedAt } else { '-' })"
 Write-SafeStatus "Port: $DefaultPort"
 Write-SafeStatus "Local URL: http://127.0.0.1:$DefaultPort"
 foreach ($ip in (Get-LanIPv4)) { Write-SafeStatus "LAN URL: http://$ip`:$DefaultPort" }

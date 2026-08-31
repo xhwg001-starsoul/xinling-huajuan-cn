@@ -1,6 +1,7 @@
 const { normalizeAdminDiagnosticsPayload } = require("../analysis-fact-dto");
 const { evaluateReportFactConsistency } = require("./analysisConsistencyService");
 const { buildFactSnapshot, importantFactsNeedingConfirmation } = require("./visualFactSnapshot");
+const { buildId, runtimeVersion, serverStartedAt } = require("./runtimeIdentity");
 
 function pngDimensions(buffer) {
   if (buffer.length < 24 || buffer.toString("hex", 0, 8) !== "89504e470d0a1a0a") return null;
@@ -73,7 +74,15 @@ function publicImageMetadata(metadata) {
 }
 
 function buildSafeAnalysisDiagnostics({ analysisResult = {}, imageDataUrl, preprocessOperations = [] } = {}) {
-  const input = publicImageMetadata(imageInputMetadata(imageDataUrl));
+  const coreImage = analysisResult.caseAnalysisCore?.visualAnalysis?.imageMetadata || {};
+  const input = imageDataUrl
+    ? publicImageMetadata(imageInputMetadata(imageDataUrl))
+    : {
+      width: Number.isInteger(coreImage.width) ? coreImage.width : null,
+      height: Number.isInteger(coreImage.height) ? coreImage.height : null,
+      mimeType: String(coreImage.mimeType || ""),
+      byteLength: Number.isFinite(Number(coreImage.bytes ?? coreImage.byteLength)) ? Number(coreImage.bytes ?? coreImage.byteLength) : null,
+    };
   const packet = analysisResult.analysisPacket || {};
   const snapshot = analysisResult.factSnapshot || buildFactSnapshot(packet);
   const legacySummary = visualFactSummary(packet);
@@ -102,6 +111,10 @@ function buildSafeAnalysisDiagnostics({ analysisResult = {}, imageDataUrl, prepr
     },
     needsHumanConfirmation: importantFactsNeedingConfirmation(snapshot),
     factConsistency,
+    knowledge: analysisResult.diagnostics?.knowledge || {},
+    performance: analysisResult.diagnostics?.performance || {},
+    pipeline: analysisResult.diagnostics?.pipeline || {},
+    runtime: { serverStartedAt, runtimeVersion, buildId },
   };
   return normalizeAdminDiagnosticsPayload({
     mode: analysisResult.mode,

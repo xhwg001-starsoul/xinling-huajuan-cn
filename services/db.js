@@ -83,6 +83,7 @@ function initializeSchema(db) {
       multimodal_provider TEXT NOT NULL DEFAULT 'qwen',
       multimodal_model TEXT NOT NULL DEFAULT 'qwen3.8-max',
       allow_teacher_model_selection INTEGER NOT NULL DEFAULT 0 CHECK (allow_teacher_model_selection IN (0, 1)),
+      knowledge_base_enabled INTEGER NOT NULL DEFAULT 1 CHECK (knowledge_base_enabled IN (0, 1)),
       updated_by TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -140,6 +141,7 @@ function runMigrations(db) {
   ensureColumn(db, "system_model_settings", "multimodal_provider", "TEXT NOT NULL DEFAULT 'qwen'");
   ensureColumn(db, "system_model_settings", "multimodal_model", "TEXT NOT NULL DEFAULT 'qwen3.8-max'");
   ensureColumn(db, "system_model_settings", "allow_teacher_model_selection", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "system_model_settings", "knowledge_base_enabled", "INTEGER NOT NULL DEFAULT 1");
   ensureColumn(db, "system_model_settings", "updated_by", "TEXT");
   ensureColumn(db, "system_model_settings", "created_at", "TEXT");
   ensureColumn(db, "system_model_settings", "updated_at", "TEXT");

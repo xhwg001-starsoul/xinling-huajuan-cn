@@ -22,6 +22,33 @@ function findAffirmedPhrase(text, phrases) {
   return "";
 }
 
+function clauseAround(text, index, length) {
+  const boundaries = /[。！？!?；;]/;
+  let start = index;
+  while (start > 0 && !boundaries.test(text[start - 1])) start -= 1;
+  let end = index + length;
+  while (end < text.length && !boundaries.test(text[end])) end += 1;
+  return text.slice(start, end);
+}
+
+function smokeClauseIsTentative(text, index, length) {
+  const clause = clauseAround(text, index, length);
+  return /(?:如果|假如|若(?:是|这)|可能|或许|疑似|似乎|仿佛|像云又像烟|像烟又像云|烟还是云|烟或云|也可能是云|需(?:要)?确认|无法确定|不能确定|尚不确定)/.test(clause);
+}
+
+function findAffirmedSmokePhrase(text, phrases) {
+  for (const phrase of phrases) {
+    let from = 0;
+    while (from < text.length) {
+      const index = text.indexOf(phrase, from);
+      if (index < 0) break;
+      if (!phraseIsNegated(text, index) && !smokeClauseIsTentative(text, index, phrase.length)) return phrase;
+      from = index + phrase.length;
+    }
+  }
+  return "";
+}
+
 function conflict(code, fact, matchedText) {
   return { code, fact, matchedText };
 }
@@ -31,13 +58,25 @@ function evaluateReportFactConsistency(factSnapshot, reportMarkdown) {
   const facts = factSnapshot || {};
   const conflicts = [];
   const smokeNo = ["烟囱没有烟", "烟囱上没有烟", "烟囱不冒烟", "没有炊烟", "炉火已经熄灭", "炉火已熄"];
-  const smokeYes = ["烟囱正在冒烟", "烟囱冒烟", "正在冒烟", "炊烟正在升起", "炊烟升起"];
+  const smokeYes = [
+    "烟囱正在冒烟",
+    "烟从烟囱里升起来",
+    "烟从烟囱升起",
+    "画面明确有两股炊烟",
+    "画中明确有炊烟",
+    "房屋有两股烟",
+    "这里画的是烟",
+    "烟囱冒烟",
+    "正在冒烟",
+    "炊烟正在升起",
+    "炊烟升起",
+  ];
   const thinTrunk = ["树干很细", "树干细长", "细长的树干", "树干细弱", "细弱树干", "纤细树干", "纤细的树干", "非常窄的树干", "树干非常窄", "树干窄小"];
   const thickTrunk = ["树干粗壮", "粗壮的树干", "树干宽厚", "树干粗大", "树干很粗"];
 
   if (facts.smoke?.confidence !== "low") {
-    const noPhrase = findAffirmedPhrase(report, smokeNo);
-    const yesPhrase = findAffirmedPhrase(report, smokeYes);
+    const noPhrase = findAffirmedSmokePhrase(report, smokeNo);
+    const yesPhrase = findAffirmedSmokePhrase(report, smokeYes);
     if (facts.smoke.present === "uncertain") {
       if (noPhrase) conflicts.push(conflict("smoke_uncertain_changed_to_no", "smoke.present", noPhrase));
       if (yesPhrase) conflicts.push(conflict("smoke_uncertain_changed_to_yes", "smoke.present", yesPhrase));
@@ -100,4 +139,5 @@ module.exports = {
   assertReportFactConsistency,
   evaluateReportFactConsistency,
   findAffirmedPhrase,
+  findAffirmedSmokePhrase,
 };

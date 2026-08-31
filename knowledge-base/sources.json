@@ -1,0 +1,126 @@
+{
+  "version": "0.2",
+  "sources": [
+    {
+      "source_id": "SRC-HTP-BOOK-001",
+      "source_type": "book",
+      "title": "原始HTP书籍（本轮未提供原书，书名/作者/版本待补录）",
+      "authors": "",
+      "year": null,
+      "doi": "",
+      "pmid": "",
+      "url": "",
+      "notes": "HTP-V01-001至HTP-V01-165均来自此前对该书的结构化抽取；本轮无法逐页核对原文。"
+    },
+    {
+      "source_id": "SRC-HTP-META-2023",
+      "source_type": "systematic_review_meta_analysis",
+      "title": "Analysis of the screening and predicting characteristics of the house-tree-person drawing test for mental disorders: A systematic review and meta-analysis",
+      "authors": "Guo H, Feng B, et al.",
+      "year": 2023,
+      "doi": "10.3389/fpsyt.2022.1041770",
+      "pmid": "36683989",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/36683989/",
+      "notes": "30项研究、6295名参与者；对HTP绘画特征与精神障碍组别的群体统计关联进行Meta分析，异质性较高；不能据此进行个体诊断。"
+    },
+    {
+      "source_id": "SRC-HTP-DNN-2022",
+      "source_type": "empirical_study",
+      "title": "The House-Tree-Person test is not valid for the prediction of mental health: An empirical study using deep neural networks",
+      "authors": "Lin Y, Zhang N, Qu Y, Li T, Liu J, Song Y",
+      "year": 2022,
+      "doi": "10.1016/j.actpsy.2022.103734",
+      "pmid": "36058187",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/36058187/",
+      "notes": "4196名中国儿童青少年样本；DNN能够识别房树人对象，但未能区分有无抑郁的绘画，提示HTP诊断/预测效度存在重要争议。"
+    },
+    {
+      "source_id": "SRC-FORMAL-2020",
+      "source_type": "multi_study_empirical_article",
+      "title": "Formal Elements of Art Products Indicate Aspects of Mental Health",
+      "authors": "Pénzes I, van Hooren S, Dokter D, Hutschemaekers G",
+      "year": 2020,
+      "doi": "10.3389/fpsyg.2020.572700",
+      "pmid": "33101143",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/33101143/",
+      "notes": "研究了形式元素的定义、可操作化、评分者一致性及其与成人心理健康指标的关系；支持优先观察可见形式元素而非机械象征解释。"
+    },
+    {
+      "source_id": "SRC-FORMAL-2018",
+      "source_type": "qualitative_study",
+      "title": "How Art Therapists Observe Mental Health Using Formal Elements in Art Products: Structure and Variation as Indicators for Balance and Adaptability",
+      "authors": "Pénzes I, van Hooren S, Dokter D, Smeijsters H, Hutschemaekers G",
+      "year": 2018,
+      "doi": "10.3389/fpsyg.2018.01611",
+      "pmid": "30258374",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/30258374/",
+      "notes": "8名艺术治疗师访谈；强调movement、dynamic、contour、repetition及色彩等形式元素的组合，更多用于理解平衡、适应性与资源，而非直接诊断。"
+    },
+    {
+      "source_id": "SRC-HTP-INQUIRY-2019",
+      "source_type": "clinical_research_procedure",
+      "title": "Use of the House-Tree-Person Projective Drawings and Parental Styles Inventory in the Global Psychological Evaluation of Transgender Youth Who Seek Healthcare at the Gender Identity Program",
+      "authors": "相关研究团队",
+      "year": 2019,
+      "doi": "",
+      "pmid": "",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6861324/",
+      "notes": "文中明确描述HTP的绘画阶段后还有Inquiry阶段，通过结构化问题了解绘画者对作品各部分的联想。该来源用于支持流程设计，不用于验证象征解释。"
+    },
+    {
+      "source_id": "SRC-AATA-ETHICS",
+      "source_type": "professional_ethics_guidance",
+      "title": "American Art Therapy Association — Ethical Principles for Art Therapists",
+      "authors": "American Art Therapy Association",
+      "year": 2026,
+      "doi": "",
+      "pmid": "",
+      "url": "https://arttherapy.org/ethics/",
+      "notes": "用于支持知情同意、作品保存/分享、专业边界与保护服务对象福祉等伦理原则。"
+    },
+    {
+      "source_id": "SRC-DRAWING-CULTURE-2022",
+      "source_type": "cross_cultural_empirical_study",
+      "title": "Draw yourself: How culture influences drawings by children between the ages of two and fifteen",
+      "authors": "相关研究团队",
+      "year": 2022,
+      "doi": "10.3389/fpsyg.2022.940617",
+      "pmid": "36425836",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/36425836/",
+      "notes": "958幅来自35个国家、2-15岁儿童自画像；年龄、文化、社会环境与画面复杂度、内容、人物比例等存在关联。"
+    },
+    {
+      "source_id": "SRC-DRAWING-INTELLIGENCE-2011",
+      "source_type": "empirical_study",
+      "title": "Children's human figure drawings do not measure intellectual ability",
+      "authors": "相关研究团队",
+      "year": 2011,
+      "doi": "10.1016/j.jecp.2011.04.013",
+      "pmid": "21620415",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/21620415/",
+      "notes": "提示人物画用于个体智力分类时存在较多假阳性和假阴性，不能作为替代性智力测验。"
+    },
+    {
+      "source_id": "SRC-DRAWING-VISUOMOTOR-2018",
+      "source_type": "empirical_study",
+      "title": "Simple Categorization of Human Figure Drawings at 5 Years of Age as an Indicator of Developmental Delay",
+      "authors": "相关研究团队",
+      "year": 2018,
+      "doi": "",
+      "pmid": "30332545",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/30332545/",
+      "notes": "5岁儿童人物画发展阶段与视觉知觉、视觉运动控制等因素有关，提示画面成熟度受发展与运动因素影响。"
+    },
+    {
+      "source_id": "SRC-DRAWING-CRITICAL-1998",
+      "source_type": "critical_review",
+      "title": "Drawing conclusions: a re-examination of empirical and conceptual bases for psychological evaluation of children from their drawings",
+      "authors": "Thomas GV, Jolley RP",
+      "year": 1998,
+      "doi": "10.1111/j.2044-8260.1998.tb01289.x",
+      "pmid": "9631202",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/9631202/",
+      "notes": "批判性回顾儿童绘画心理评估的可靠性、效度及影响机制，强调解释需谨慎。"
+    }
+  ]
+}

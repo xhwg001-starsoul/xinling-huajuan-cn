@@ -40,6 +40,13 @@
     return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
   }
 
+  function allExplicitlyNo(source, names) {
+    return names.every((name) => {
+      const value = first(source, [name, `${name}_present`]);
+      return value !== undefined && present(value, name) === "no";
+    });
+  }
+
   function factSnapshotFromPacket(analysisPacket) {
     const checks = object(object(analysisPacket).verification_checks);
     const smoke = object(checks.chimney_and_smoke);
@@ -50,6 +57,14 @@
     const hands = object(checks.person_hands_fingers);
     const face = object(checks.person_facial_features);
     const ratio = first(trunk, ["crown_to_trunk_ratio"]);
+    const explicitGround = first(roots, ["ground_line_present", "ground_present"]);
+    const legacyGround = roots.present === "no_roots_but_ground_line" ? roots.present : undefined;
+    const explicitFace = first(face, ["facial_features_present", "present"]);
+    const facialFeatures = explicitFace !== undefined
+      ? present(explicitFace, "facialFeatures")
+      : allExplicitlyNo(face, ["eyes", "mouth", "nose", "ears", "hair"])
+        ? "no"
+        : "uncertain";
     return {
       chimney: { present: present(first(smoke, ["chimney_present", "present"]), "chimney"), confidence: confidence(first(smoke, ["chimney_confidence", "confidence"])) },
       smoke: { present: present(first(smoke, ["smoke_present"]), "smoke"), plumeCount: count(first(smoke, ["smoke_plume_count", "plume_count"])), confidence: confidence(first(smoke, ["smoke_confidence", "confidence"])) },
@@ -65,7 +80,7 @@
         confidence: confidence(first(roots, ["roots_confidence", "confidence"])),
       },
       groundLine: {
-        present: present(first(roots, ["ground_line_present", "ground_present"]) ?? roots.present, "groundLine"),
+        present: present(explicitGround ?? legacyGround, "groundLine"),
         confidence: confidence(first(roots, ["ground_line_confidence", "confidence"])),
       },
       house: {
@@ -79,7 +94,7 @@
       },
       person: {
         handsPresent: present(first(hands, ["hands_present", "present"]), "hands"),
-        facialFeaturesPresent: present(first(face, ["facial_features_present", "present"]), "facialFeatures"),
+        facialFeaturesPresent: facialFeatures,
         handsConfidence: confidence(first(hands, ["hands_confidence", "confidence"])),
         facialFeaturesConfidence: confidence(first(face, ["facial_features_confidence", "confidence"])),
       },
@@ -146,6 +161,10 @@
       criticalVisualFacts,
       needsHumanConfirmation: Array.isArray(suppliedConfirmation) ? suppliedConfirmation : confirmationList(criticalVisualFacts),
       factConsistency: Object.keys(consistency).length ? consistency : { status: "not_checked", conflicts: [] },
+      knowledge: object(diagnostics.knowledge),
+      performance: object(diagnostics.performance),
+      pipeline: object(diagnostics.pipeline),
+      runtime: object(diagnostics.runtime),
     };
   }
 

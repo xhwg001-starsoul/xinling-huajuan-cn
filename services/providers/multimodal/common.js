@@ -1,4 +1,4 @@
-const { standardizeMultimodalResult } = require("../../multimodalAnalysisResult");
+const { normalizeUsage, standardizeMultimodalResult, standardizeVisualOnlyResult } = require("../../multimodalAnalysisResult");
 
 const CONNECTION_TEST_IMAGE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFcSURBVHhe7ZKBisMwGIL7/i/d4+c8OMa/YW1iyuIHInRtNLLj3JwMAN+WDADflqUDHMdv/J+vYFlyXfpVK7Cndhd/lRNr2rvLvnvuwJLUXbD0n+730mymJnQXKn2ie780i2knd5cosdz59grDT+2KlxS6c0ojGXrarLKzzi2GnNQVLI2kO790l9snzCj1idF58tddkZKDLrekcPmrLri0gq5H6QqX3u7CSqu504l+swt5uhiG/AOeKoavHYBFHuCJKP0yAJxCCXCi9MsAcAolwInSLwPAKZQAJ0q/DACnUAKcKP0yAJxCCXCi9MsAcAolwInSLwPAKZQAJ0q/DACnUAKcKP0yAJxCCXCi9MsAcAolwInSLwPAKZQAJ0q/DACnUAKcKP0yAJxCCXCi9MsAcAolwInSTx7g6WLJAHCKLuipYrk0wDeSAeDbkgHg25IB4NuSAeDbsvkA5/kDmI4NFRg3/eEAAAAASUVORK5CYII=";
 
@@ -29,6 +29,7 @@ function analysisTimeoutMs(explicitTimeoutMs) {
 
 async function postJson({ provider, stage, apiKey, body, fetchImpl = fetch, timeoutMs }) {
   const effectiveTimeoutMs = analysisTimeoutMs(timeoutMs);
+  const providerStartedAt = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
   let response;
@@ -40,27 +41,39 @@ async function postJson({ provider, stage, apiKey, body, fetchImpl = fetch, time
       signal: controller.signal,
     });
   } catch (error) {
-    throw providerError(provider, stage, 0, error?.name === "AbortError" ? "timeout" : "network_error");
-  } finally {
     clearTimeout(timeout);
+    throw providerError(provider, stage, 0, error?.name === "AbortError" ? "timeout" : "network_error");
   }
   let data = {};
+  const responseParseStartedAt = Date.now();
   try {
     data = await response.json();
   } catch {
+    clearTimeout(timeout);
     if (!response.ok) throw providerError(provider, stage, response.status, "invalid_error_response");
     throw providerError(provider, stage, response.status, "invalid_json_response");
   }
+  clearTimeout(timeout);
   if (!response.ok) {
     const error = providerError(provider, stage, response.status, data?.error?.code || data?.code || "http_error");
     error.visionInputUnsupported = /image|vision|multimodal/i.test(String(data?.error?.message || data?.message || ""));
     throw error;
   }
+  Object.defineProperty(data, "__performance", {
+    value: {
+      providerLatencyMs: Date.now() - providerStartedAt,
+      responseParseMs: Date.now() - responseParseStartedAt,
+      backendProviderTimeoutMs: effectiveTimeoutMs,
+      responseBodyComplete: true,
+    },
+    enumerable: false,
+  });
   return data;
 }
 
 async function postChatStream({ provider, stage, apiKey, body, fetchImpl = fetch, timeoutMs = 600000 }) {
   const effectiveTimeoutMs = analysisTimeoutMs(timeoutMs);
+  const providerStartedAt = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
   let response;
@@ -83,12 +96,25 @@ async function postChatStream({ provider, stage, apiKey, body, fetchImpl = fetch
     let text = "";
     let finishReason = "";
     let usage = {};
+    let responseParseMs = 0;
+    let sawDone = false;
+    let malformedEventCount = 0;
     const consumeLine = (line) => {
+      const parseStartedAt = Date.now();
       const trimmed = line.trim();
-      if (!trimmed || trimmed === "data: [DONE]") return;
+      if (!trimmed) return;
+      if (trimmed === "data: [DONE]") {
+        sawDone = true;
+        responseParseMs += Date.now() - parseStartedAt;
+        return;
+      }
       if (!trimmed.startsWith("data:")) return;
       let event;
-      try { event = JSON.parse(trimmed.slice(5).trim()); } catch { return; }
+      try { event = JSON.parse(trimmed.slice(5).trim()); } catch {
+        malformedEventCount += 1;
+        responseParseMs += Date.now() - parseStartedAt;
+        return;
+      }
       const choice = event?.choices?.[0] || {};
       const content = choice?.delta?.content;
       if (typeof content === "string") {
@@ -97,6 +123,7 @@ async function postChatStream({ provider, stage, apiKey, body, fetchImpl = fetch
       }
       if (choice.finish_reason) finishReason = choice.finish_reason;
       if (event?.usage) usage = event.usage;
+      responseParseMs += Date.now() - parseStartedAt;
     };
     for await (const chunk of response.body) {
       buffer += decoder.decode(chunk, { stream: true });
@@ -106,10 +133,30 @@ async function postChatStream({ provider, stage, apiKey, body, fetchImpl = fetch
     }
     buffer += decoder.decode();
     if (buffer) consumeLine(buffer);
-    return { text, usage, finishReason, truncated: finishReason === "length" };
+    return {
+      text,
+      usage,
+      finishReason,
+      truncated: finishReason === "length",
+      performance: {
+        providerLatencyMs: Date.now() - providerStartedAt,
+        responseParseMs,
+        backendProviderTimeoutMs: effectiveTimeoutMs,
+        responseBodyComplete: Boolean(sawDone || finishReason),
+        streamDoneReceived: sawDone,
+        malformedEventCount,
+      },
+    };
   } catch (error) {
-    if (error?.provider === provider) throw error;
-    throw providerError(provider, stage, 0, error?.name === "AbortError" ? "timeout" : "network_error");
+    const safeError = error?.provider === provider
+      ? error
+      : providerError(provider, stage, 0, error?.name === "AbortError" ? "timeout" : "network_error");
+    safeError.performanceDiagnostics = {
+      providerLatencyMs: Date.now() - providerStartedAt,
+      backendProviderTimeoutMs: effectiveTimeoutMs,
+      responseBodyComplete: false,
+    };
+    throw safeError;
   } finally {
     clearTimeout(timeout);
   }
@@ -122,6 +169,7 @@ function extractChatResult(data) {
     usage: data?.usage || {},
     finishReason: choice?.finish_reason || "",
     truncated: choice?.finish_reason === "length",
+    performance: data?.__performance || {},
   };
 }
 
@@ -139,21 +187,43 @@ function extractOpenAIResult(data) {
     usage: data?.usage || {},
     finishReason: incompleteReason || data?.status || "",
     truncated: data?.status === "incomplete" || incompleteReason === "max_output_tokens",
+    performance: data?.__performance || {},
   };
 }
 
-function finalize({ raw, provider, stage, startedAt, requestId }) {
+function finalize({ raw, provider, stage, startedAt, requestId, performance = {}, outputMode = "full" }) {
   if (!raw.text) throw providerError(provider, stage, 200, "empty_output");
-  return standardizeMultimodalResult({
-    rawText: raw.text,
-    provider,
-    model: stage.model,
-    usage: raw.usage,
-    latencyMs: Date.now() - startedAt,
-    requestId,
-    finishReason: raw.finishReason,
-    truncated: raw.truncated,
-  });
+  const combinedPerformance = { ...performance, ...(raw.performance || {}) };
+  try {
+    const standardize = outputMode === "visual_only" ? standardizeVisualOnlyResult : standardizeMultimodalResult;
+    return standardize({
+      rawText: raw.text,
+      provider,
+      model: stage.model,
+      usage: raw.usage,
+      latencyMs: Date.now() - startedAt,
+      requestId,
+      finishReason: raw.finishReason,
+      truncated: raw.truncated,
+      performance: combinedPerformance,
+    });
+  } catch (error) {
+    const normalizedUsage = normalizeUsage(raw.usage);
+    error.performanceDiagnostics = {
+      ...combinedPerformance,
+      ...(error.performanceDiagnostics || {}),
+      providerLatencyMs: Number(combinedPerformance.providerLatencyMs || Date.now() - startedAt),
+      inputTokens: normalizedUsage.inputTokens,
+      outputTokens: normalizedUsage.outputTokens,
+      finishReason: String(raw.finishReason || ""),
+      stopReason: String(raw.finishReason || ""),
+      rawResponseChars: String(raw.text || "").length,
+      responseBodyComplete: combinedPerformance.responseBodyComplete !== false,
+      jsonTruncation: Boolean(error.performanceDiagnostics?.jsonTruncation),
+      reportTruncation: Boolean(raw.truncated || error.performanceDiagnostics?.reportTruncation),
+    };
+    throw error;
+  }
 }
 
 module.exports = {

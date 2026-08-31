@@ -137,6 +137,12 @@ function resolveModelRuntimeConfig(settings = {}, { source } = {}) {
       settingsSource,
       updatedAt,
     });
+  const report = stageRuntime({
+    provider: modelConfig.textProvider,
+    model: modelConfig.textModel,
+    settingsSource,
+    updatedAt,
+  });
   return {
     analysisMode: modelConfig.analysisMode,
     pipelineMode: modelConfig.pipelineMode,
@@ -147,6 +153,7 @@ function resolveModelRuntimeConfig(settings = {}, { source } = {}) {
     multimodal,
     vision,
     text,
+    report,
   };
 }
 
@@ -174,6 +181,7 @@ function safeRuntimeDiagnostic(runtimeConfig) {
     multimodal: safeStageDiagnostic(runtimeConfig.multimodal),
     vision: safeStageDiagnostic(runtimeConfig.vision),
     text: safeStageDiagnostic(runtimeConfig.text),
+    report: safeStageDiagnostic(runtimeConfig.report),
   };
 }
 

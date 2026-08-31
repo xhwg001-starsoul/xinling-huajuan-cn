@@ -9,12 +9,29 @@ if ($DataRoot) {
 . "$PSScriptRoot\common.ps1"
 Ensure-XinlingDirs
 
-$existingPid = Get-XinlingPid
-if (Test-XinlingProcess $existingPid) {
-  Write-SafeStatus "Xinling Huajuan is already running. PID: $existingPid"
-  exit 0
+$existingState = Get-XinlingRuntimeStatus -Port $DefaultPort -RecoverPidFile
+if ($existingState.Running) {
+  $healthInfo = Get-XinlingHealthInfo $DefaultPort
+  $startedAt = if ($healthInfo.serverStartedAt) { $healthInfo.serverStartedAt } else { "unknown" }
+  Write-SafeStatus (Get-Zh "5pyN5Yqh5bey6L+Q6KGM77yM6K+35L2/55SocmVzdGFydOOAgg==")
+  Write-SafeStatus "PID: $($existingState.PidValue)"
+  Write-SafeStatus "Started at: $startedAt"
+  exit 2
 }
-if ($existingPid) { Remove-Item -Force $PidPath -ErrorAction SilentlyContinue }
+if ($existingState.PortListenerPid) {
+  $listenerValidation = Get-XinlingCommandLineValidation $existingState.PortListenerPid
+  if ($listenerValidation -eq "matched") {
+    $processInfo = Get-Process -Id $existingState.PortListenerPid -ErrorAction SilentlyContinue
+    Write-SafeStatus (Get-Zh "5pyN5Yqh5bey6L+Q6KGM77yM6K+35L2/55SocmVzdGFydOOAgg==")
+    Write-SafeStatus "PID: $($existingState.PortListenerPid)"
+    Write-SafeStatus "Started at: $(if ($processInfo) { $processInfo.StartTime.ToString('o') } else { 'unknown' })"
+    exit 2
+  }
+  Write-SafeStatus "port_already_in_use: Port $DefaultPort is occupied by PID $($existingState.PortListenerPid)."
+  Write-SafeStatus "The listener did not pass Xinling Huajuan health validation. Start was cancelled."
+  exit 2
+}
+if ($existingState.PidValue) { Remove-Item -Force $PidPath -ErrorAction SilentlyContinue }
 
 $node = Get-Command node -ErrorAction SilentlyContinue
 if (!$node) {
@@ -37,6 +54,12 @@ if (!(Test-Health ([int]$env:PORT))) {
   Write-SafeStatus "Health check failed. See log: $errLog"
   exit 1
 }
+$newState = Get-XinlingRuntimeStatus -Port ([int]$env:PORT) -RecoverPidFile
+if (!$newState.Running -or $newState.PidValue -ne $process.Id) {
+  Write-SafeStatus "start_validation_failed: Port listener does not match the new process."
+  exit 1
+}
+$healthInfo = Get-XinlingHealthInfo ([int]$env:PORT)
 
 Write-SafeStatus "Xinling Huajuan started."
 Write-SafeStatus "Local URL: http://127.0.0.1:$($env:PORT)"
@@ -45,3 +68,5 @@ foreach ($ip in $ips) { Write-SafeStatus "LAN URL: http://$ip`:$($env:PORT)" }
 Write-SafeStatus "PID: $($process.Id)"
 Write-SafeStatus "Port: $($env:PORT)"
 Write-SafeStatus "Data root: $DataRoot"
+Write-SafeStatus "Server started at: $($healthInfo.serverStartedAt)"
+Write-SafeStatus "Runtime version: $($healthInfo.runtimeVersion)"

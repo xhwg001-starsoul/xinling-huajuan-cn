@@ -23,6 +23,7 @@ const apiResponseUsingLegacyDto = {
   adminDiagnostics: {
     imageInput: { width: 1706, height: 1279, mimeType: "image/jpeg", bytes: 456789 },
     visualFacts: { absoluteTrunkWidth: "medium" },
+    performance: { totalLatencyMs: 301234, providerLatencyMs: 300900, reportMarkdownChars: 2048, analysisPacketJsonChars: 8192, reportTruncation: false },
   },
 };
 
@@ -52,7 +53,10 @@ assert.equal(dto.criticalVisualFacts.person.facialFeaturesPresent, "no");
 assert.equal(dto.factConsistency.status, "pass");
 assert.deepEqual(dto.factConsistency.conflicts, []);
 assert(dto.needsHumanConfirmation.some((item) => item.fact === "smoke.present"));
-assert.doesNotMatch(JSON.stringify(dto), /data:image|base64|api[_-]?key|reportMarkdown|studentBackground/i);
+assert.equal(dto.performance.totalLatencyMs, 301234);
+assert.equal(dto.performance.providerLatencyMs, 300900);
+assert.equal(dto.performance.reportTruncation, false);
+assert.doesNotMatch(JSON.stringify(dto), /data:image|base64|api[_-]?key|reportMarkdown"\s*:|studentBackground/i);
 
 console.log("ok - API legacy/new diagnostics fields map to the safe admin frontend DTO");
 

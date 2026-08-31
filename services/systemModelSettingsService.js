@@ -60,6 +60,7 @@ function sanitizeSettings(input = {}) {
     multimodalProvider,
     multimodalModel: safeModelName(input.multimodalModel, multimodalModelFallback),
     allowTeacherModelSelection: input.allowTeacherModelSelection === true || input.allowTeacherModelSelection === 1,
+    knowledgeBaseEnabled: input.knowledgeBaseEnabled !== false && input.knowledgeBaseEnabled !== 0,
     pipelineMode,
     singleProvider: safeProvider(input.singleProvider, singleProviders, defaults.singleProvider),
     singleModel: safeModelName(input.singleModel, defaults.singleModel),
@@ -76,6 +77,7 @@ function rowToSettings(row) {
     multimodalProvider: row.multimodal_provider || row.single_provider || "qwen",
     multimodalModel: row.multimodal_model || row.single_model || "qwen3.8-max",
     allowTeacherModelSelection: row.allow_teacher_model_selection === 1,
+    knowledgeBaseEnabled: row.knowledge_base_enabled !== 0,
     pipelineMode: row.pipeline_mode,
     singleProvider: row.single_provider,
     singleModel: row.single_model,
@@ -125,8 +127,8 @@ function upsertSettings({ organizationId, settings, updatedBy = null }) {
     INSERT INTO system_model_settings (
       id, organization_id, pipeline_mode, single_provider, single_model, vision_provider,
       vision_model, text_provider, text_model, analysis_mode, multimodal_provider,
-      multimodal_model, allow_teacher_model_selection, updated_by, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      multimodal_model, allow_teacher_model_selection, knowledge_base_enabled, updated_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(organization_id) DO UPDATE SET
       pipeline_mode = excluded.pipeline_mode,
       single_provider = excluded.single_provider,
@@ -139,6 +141,7 @@ function upsertSettings({ organizationId, settings, updatedBy = null }) {
       multimodal_provider = excluded.multimodal_provider,
       multimodal_model = excluded.multimodal_model,
       allow_teacher_model_selection = excluded.allow_teacher_model_selection,
+      knowledge_base_enabled = excluded.knowledge_base_enabled,
       updated_by = excluded.updated_by,
       updated_at = excluded.updated_at
   `).run(
@@ -155,6 +158,7 @@ function upsertSettings({ organizationId, settings, updatedBy = null }) {
     safeSettings.multimodalProvider,
     safeSettings.multimodalModel,
     safeSettings.allowTeacherModelSelection ? 1 : 0,
+    safeSettings.knowledgeBaseEnabled ? 1 : 0,
     updatedBy,
     existing?.created_at || now,
     now,
@@ -208,6 +212,8 @@ function providerStatus(token) {
       analysisMode: settings.analysisMode,
       provider: settings.multimodalProvider,
       model: settings.multimodalModel,
+      reportProvider: settings.textProvider,
+      reportModel: settings.textModel,
       updatedAt: settings.updatedAt,
     },
   };

@@ -648,8 +648,10 @@
                 <label for="visionModelInput">视觉模型名称</label>
                 <input id="visionModelInput" name="visionModel" placeholder="gpt-4o-mini" />
               </div>
+              </div>
+              <div id="reportModelFields">
               <div class="field">
-                <label for="textProviderInput">文本模型供应商</label>
+                <label for="textProviderInput">报告文本模型供应商</label>
                 <select id="textProviderInput" name="textProvider">
                   <option value="openai">openai</option>
                   <option value="deepseek">deepseek</option>
@@ -658,13 +660,17 @@
                 </select>
               </div>
               <div class="field">
-                <label for="textModelInput">文本模型名称</label>
+                <label for="textModelInput">报告文本模型名称</label>
                 <input id="textModelInput" name="textModel" placeholder="gpt-4o-mini" />
               </div>
               </div>
               <label class="form-hint">
                 <input type="checkbox" name="allowTeacherModelSelection" />
                 允许教师选择本次分析模型（后端设置已预留，教师端入口本轮暂不开放）
+              </label>
+              <label class="form-hint">
+                <input type="checkbox" name="knowledgeBaseEnabled" />
+                启用 HTP 专业知识库约束与探索性问题增强
               </label>
             </form>
             <div class="dashboard-actions is-hidden" id="modelSettingsActions">
@@ -676,6 +682,19 @@
               <button class="ghost-button" id="saveModelSettingsButton" type="button">保存设置</button>
             </div>
             <p class="form-hint" id="modelSettingsMessage">管理员设置由设置码临时保护。</p>
+          </section>
+
+          <section class="dashboard-panel is-hidden" id="knowledgeBaseStatusPanel">
+            <div class="panel-head">
+              <p class="section-kicker">专业支持</p>
+              <h2>HTP 专业知识库</h2>
+              <p class="form-hint">仅显示加载与审计摘要，不展示知识卡正文或学生资料。</p>
+            </div>
+            <div class="overview-grid" id="knowledgeBaseStatusGrid"></div>
+            <div class="dashboard-actions">
+              <button class="ghost-button" id="refreshKnowledgeBaseStatusButton" type="button">刷新知识库状态</button>
+            </div>
+            <p class="form-hint" id="knowledgeBaseStatusMessage"></p>
           </section>
 
           <section class="dashboard-panel is-hidden" id="systemStatusPanel">

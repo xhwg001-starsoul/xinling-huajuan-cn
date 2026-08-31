@@ -73,6 +73,8 @@ confidence = low 的特征可以进入人工视觉确认问题，但不得生成
 11. 主体是否贴近纸张边缘；
 12. 是否还有视觉突出但未记录的元素。
 
+roots_and_ground 必须把树根与地面线分开记录：roots_present 和 ground_line_present 均只允许 yes / no / uncertain，并分别给出置信度。旧字段 present 只能表示树根，绝不能同时代表地面线。person_facial_features 应优先输出 facial_features_present；如分别检查眼、口、鼻、耳、头发，也必须保留各自的 yes / no / uncertain。
+
 ## 八、心理显著特征
 
 从全部观察中选择约 5—12 个真正值得探索的 salient_features。优先选择明显、重复、反差突出、涉及房树人关系、多个特征共同指向一个主题、值得追问、可能影响安全评估或代表心理资源的特征。
@@ -120,7 +122,7 @@ confidence = low 的特征可以进入人工视觉确认问题，但不得生成
     "tree_trunk_width": { "absolute_judgment": "thick|medium|thin|uncertain", "absolute_trunk_width": "thick|medium|thin|uncertain", "crown_to_trunk_ratio": "large|medium|small|uncertain", "base_width": "", "middle_width": "", "relation_to_tree_height": "", "relation_to_crown": "", "possible_crown_size_bias": false, "confidence": "high|medium|low", "evidence": "" },
     "chimney_and_smoke": { "chimney_present": "yes|no|uncertain", "smoke_present": "yes|no|uncertain", "smoke_plume_count": null, "confidence": "high|medium|low", "evidence": "" },
     "tree_scars_holes_damage": { "present": "yes|no|uncertain", "count": null, "locations": [], "description": "", "confidence": "high|medium|low" },
-    "broken_or_dead_branches": {}, "roots_and_ground": {}, "house_openings": {}, "person_hands_fingers": {}, "person_facial_features": {}, "erasures_retracing": {}, "shading_blackening": {}, "repeated_unusual_symbols": {}, "edge_proximity": {}, "other_possible_omissions": []
+    "broken_or_dead_branches": {}, "roots_and_ground": { "roots_present": "yes|no|uncertain", "ground_line_present": "yes|no|uncertain", "roots_confidence": "high|medium|low", "ground_line_confidence": "high|medium|low", "evidence": "" }, "house_openings": {}, "person_hands_fingers": {}, "person_facial_features": { "facial_features_present": "yes|no|uncertain", "eyes": "yes|no|uncertain", "mouth": "yes|no|uncertain", "nose": "yes|no|uncertain", "ears": "yes|no|uncertain", "hair": "yes|no|uncertain", "confidence": "high|medium|low" }, "erasures_retracing": {}, "shading_blackening": {}, "repeated_unusual_symbols": {}, "edge_proximity": {}, "other_possible_omissions": []
   },
   "salient_features": [{ "observation_id": "", "object": "", "feature": "", "description": "", "visual_evidence": "", "confidence": "high|medium|low", "psychological_salience": "high|medium|low|unknown", "needs_human_visual_confirmation": false }],
   "hypothesis_candidates": [{ "hypothesis_id": "H1", "theme": "", "based_on_observation_ids": [], "knowledge_card_ids": [], "source_basis": ["approved_knowledge_base|model_general_knowledge"], "provisional_hypothesis": "", "why_worth_exploring": "", "alternative_explanations": [], "supporting_information_needed": [], "disconfirming_information": [], "requires_inquiry": true, "user_facing_allowed": false, "sensitivity": "low|medium|high" }],
